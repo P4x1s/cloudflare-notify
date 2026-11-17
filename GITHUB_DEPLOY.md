@@ -87,7 +87,7 @@ Cloudflare 后台有两个入口，名字很像，行为完全不同。**这个�
 
    > 官方明确要求：Dashboard 里的 Worker 名称必须匹配 `wrangler.toml` 的 `name`。本仓库该值是 `cloudflare-notify`，照填即可。
 
-   > **关于 API token**：创建向导页里通常没有这一栏，这是正常的——它在项目创建**完成后**的 Worker 设置页里。若构建报 `CLOUDFLARE_API_TOKEN` 未设置，按本步末尾的「构建报 CLOUDFLARE_API_TOKEN 未设置怎么办」处理。
+   > **关于 API token**：新版中文界面的「构建」页里**没有**单独叫"API token"的设置项——它在「**变量和密钥**」区域（那行"配置 API 令牌和其他运行时变量"）。Workers 项目会自动生成令牌，无需手动配置；若报 `CLOUDFLARE_API_TOKEN` 错误，先按本步末尾判断项目类型，再按对应方法处理。
 
 6. 点 **Save and Deploy**，等待首次构建完成（通常十几秒）。
 7. 成功后 Cloudflare 会给出 `https://cloudflare-notify.<你的子域>.workers.dev` 地址。
@@ -102,29 +102,26 @@ Cloudflare 后台有两个入口，名字很像，行为完全不同。**这个�
 In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable
 ```
 
-原因是 Workers Builds 在云端是非交互构建，wrangler 无法弹窗登录，需要一个 **API token（API 访问令牌）** 认证。**注意：API token 不在上面的创建向导页里**，要去已创建好的 Worker 中设置。按下面 A / B 任一方案即可，二选一。
+原因是云端构建是非交互式的，wrangler 无法弹窗登录，需要一个 **API token（API 访问令牌）** 认证。但在动手加令牌前，**先做第 0 步判断项目类型——这一步更重要**。
 
-**方案 A：让 Cloudflare 自动生成（最省事，推荐）**
+**第 0 步：先判断你建的是 Workers 还是 Pages（关键）**
 
-1. 左侧 **Workers & Pages** → 点开你刚创建的 Worker（名字 `cloudflare-notify`，不是回到 Create 向导）。
-2. 进入该 Worker 后 → **Settings** → **Build**。
-3. 在这一页找到 **API token** 一项，选择 **Create new token**（Cloudflare 自动生成一个权限合适的令牌，之后所有构建都用它，你不用手动建）。
-4. 点 **Save**。
-5. 到 **Deployments** → 找到失败的那次构建 → **Retry**（重试）。
+打开该项目的 **Settings**（设置）页，看「**绑定**」和「**运行时**」两个区域的说明文字：
 
-> 官方把这个设置项放在 Worker 的 **Settings → Build** 页，而不是创建项目的向导页——所以在向导里找不到是正常的，别在那里浪费时间。
+- 若出现「**Pages Functions**」「**Pages 函数**」字样（如截图）→ 这是 **Pages 项目**。Pages 不会自动生成 wrangler 令牌，也不会按 `wrangler.toml` 部署单文件 Worker，这就是你一路 404 又报 token 错误的根源。**正确做法：删掉这个项目，回到第 2 步重建，入口必须是 Workers & Pages → Create application → Workers（或从 Workers 页 Connect to Git），不要进 Pages 的创建入口。** 重建为 Workers 后，平台会自动生成令牌，下面的 A / B 都不用做。
+- 若没有 Pages 字样，是标准 Workers 项目 → 按下面方案 A 加令牌。
 
-**方案 B：自己创建令牌，作为构建变量传入（A 找不到该项时用）**
+**方案 A：在「变量和密钥」里加令牌（新版中文界面的正确位置）**
 
-1. 右上角头像 → **My Profile** → **API Tokens** → **Create Token**。
-2. 用一个能部署 Worker 的模板，最快是选 **Edit Cloudflare Workers**；若没有该模板，就自定义，至少包含账户权限 `Workers Scripts: Edit` 和 `Workers KV Storage: Edit`。
-3. 一路 **Continue to summary** → **Create Token** → 复制生成的令牌（**只显示一次**，先存到安全地方）。
-4. 回到该 Worker → **Settings** → **Build** → **Build variables and secrets** → **Add**，添加一条变量：
-   - 名称：`CLOUDFLARE_API_TOKEN`
-   - 值：粘贴刚才复制的令牌（建议选 Secret／加密存储）
-5. **Save** → **Deployments** → **Retry** 重新构建。
+新版界面「构建」页里**没有**单独叫"API token"的设置项，正确入口是「**变量和密钥**」区域——也就是那行"配置 API 令牌和其他运行时变量"，点它去创建令牌，再添加进来：
 
-> 令牌是你的账户凭证，只放在 Cloudflare 后台，绝不要写进 GitHub 仓库或 `wrangler.toml`。方案 A 和 B 效果相同，都用 wrangler 官方支持的认证方式，任选一个成功即可。
+1. 点那行的**创建 / 配置链接**（或右上角头像 → **My Profile** → **API Tokens** → **Create Token**），选 **Edit Cloudflare Workers** 模板 → 一路 Continue to summary → **Create Token** → 复制令牌（**只显示一次**）。
+   - 若没有该模板，就自定义，至少包含账户权限 `Workers Scripts: Edit` 和 `Workers KV Storage: Edit`。
+2. 回到该 Worker → **Settings** → **构建** → 「**变量和密钥**」区域 → 点 **+ 添加**。
+3. 添加一条：**名称** `CLOUDFLARE_API_TOKEN`，**值**粘贴令牌，类型选 **Secret（机密）** 加密存储。
+4. **Save** → **Deployments** → 点失败构建的 **Retry**（重试）。
+
+> 令牌是你的账户凭证，只放在 Cloudflare 后台，绝不要写进 GitHub 仓库或 `wrangler.toml`。若按第 0 步判断是 Pages 项目，请优先重建为 Workers，而不是给 Pages 加令牌——后者即便构建成功，404 仍会存在。
 
 ---
 
@@ -314,7 +311,8 @@ Cloudflare 免费版完全够个人通知使用：
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 404 Not Found | 建成了 Pages | 删掉重建，走 Workers → Create application → GitHub |
-| 构建报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN` | Workers Builds 缺 API token（非交互构建无法登录）；创建向导里没有这一栏是正常的 | 见第 2 步「构建报 CLOUDFLARE_API_TOKEN 未设置怎么办」：Worker → Settings → Build → API token → Create new token；找不到就自建令牌加为构建变量 `CLOUDFLARE_API_TOKEN`，再 Retry |
+| 构建报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN` | 云端非交互构建缺 API token；若设置页出现「Pages Functions」字样则是建成了 Pages（根源） | 见第 2 步「构建报 CLOUDFLARE_API_TOKEN 未设置怎么办」：先判断项目类型——Pages 就删掉重建为 Workers；Workers 则在 Settings → 构建 → 变量和密钥 添加 Secret `CLOUDFLARE_API_TOKEN` |
+| 设置页出现「Pages Functions / Pages 函数」字样 | 项目建成 Pages，不是 Workers（会 404、构建异常） | 删掉重建，入口选 **Create application → Workers**，不要进 Pages |
 | 构建失败，提示 Worker name 不匹配 | Dashboard 名称与 `wrangler.toml` 的 `name` 不一致 | 统一填 `cloudflare-notify` |
 | 构建失败，报 KV namespace 找不到 | `wrangler.toml` 里 KV ID 是占位符 | 用本仓库版本（已注释掉 KV 绑定） |
 | 页面能开但发消息 500 | KV 未绑定 | 按第 4 步绑定 `NOTIFICATIONS` |
