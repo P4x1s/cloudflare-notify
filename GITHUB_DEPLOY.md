@@ -126,13 +126,36 @@ In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN e
 
 ---
 
-## 3. 验证页面能打开
+## 3. 验证页面能打开（部署成功却 404 看这里）
 
-打开 Cloudflare 给你的 `workers.dev` 地址：
+**先记住一个确定性结论**：本项目的 `/` 首页直接返回内嵌页面、不读 KV、不依赖任何外部文件。所以只要看到的是 **404**，就说明**请求没有到达这段代码**——这不是 `worker.js` 的问题，而是「访问地址」或「部署」层面的问题。按下面顺序排查即可。
 
-- 出现带「配置自检」「发送测试通知」卡片的通知页面 = 部署成功，404 已解决。
-- 仍是 404 = 确认访问的是根路径 `/`（不是别的路径），且项目构建命令为 `npx wrangler deploy`；若构建命令是 `npm run build` 则确属 Pages，需改用 Workers 重建。
-- 完全打不开（超时）= 多为国内访问 `*.workers.dev` 不稳定，做第 7 步绑定自定义域名，或稍后重试。
+### 3.1 用 Dashboard 给的地址，不要自己拼
+
+`workers.dev` 地址格式是 `cloudflare-notify.<你的账户子域>.workers.dev`，注意两点：
+
+- 中间那段 `<你的账户子域>` 是你账户独有的，不是固定值；在 **Workers & Pages** 页右上角 **Your subdomain** 处可见或可改。
+- 若 `cloudflare-notify` 这个名字已被占用，Cloudflare 会自动加后缀，变成 `cloudflare-notify-xxxx.<子域>.workers.dev`。
+
+**最可靠做法**：进入 **Workers & Pages** → 点开你的 Worker（`cloudflare-notify`）→ 在概览页顶部找到 **Visit（访问）** 按钮或显示的 `workers.dev` 地址，**直接点它**打开。不要手动拼 URL——拼错子域或漏掉后缀是 404 的头号原因。
+
+### 3.2 用 /api/status 一锤定音
+
+在地址栏把路径换成 `/api/status` 后回车：
+
+- 返回一段含 `"version": "1.2.0"` 的 JSON → Worker 完全正常。此时首页 404 只是地址或路径写错，回到 3.1 用 **Visit** 按钮打开根路径 `/`。
+- 仍返回 Cloudflare 品牌的 404 错误页 → 请求根本没到 Worker，按 3.3 继续排查。
+- 返回 1010 / 1020 错误 → `workers.dev` 的浏览器完整性检查拦截，换普通浏览器，或做第 7 步绑定自定义域名。
+
+### 3.3 仍是 404 的排查顺序
+
+1. **确认部署真的成功**：进入该 Worker → **Deployments**，看最新一条构建状态是否为 **Success**，且 Active Deployment 指向它。若最近一次是 **Failed**，点 **Retry**。
+2. **确认 `workers.dev` 路由没被关**：该 Worker → **Settings** → **Domains & Routes** → `workers.dev` 应显示 **Enabled**；若是 **Disabled** 就点启用（默认是开启的，但手动关过就会 404）。
+3. **确认访问的是 Workers 而不是 Pages 地址**：地址结尾应是 `.workers.dev`（或你绑定的自定义域名），**不是 `.pages.dev`**。`.pages.dev` 是 Pages 项目，找不到静态 `index.html` 就会 404。
+4. **确认只访问根路径**：地址形如 `https://xxx.workers.dev/`，末尾不要带多余路径。
+5. **国内网络干扰**：`*.workers.dev` 在国内常被干扰，做第 7 步绑定自定义域名后改用自定义域名访问。
+
+> **如果以上都确认无误仍 404**，请把两样东西发出来以便精确定位：浏览器地址栏的**完整 URL**，以及 404 **页面长什么样**（Cloudflare 品牌错误页 / 浏览器自带错误页 / 其他）。这两项是线上信息、只能由你提供，拿到后即可给出确定结论。
 
 再访问 `https://<你的地址>/api/status`，应返回类似这样的 JSON（这是页面自检数据）：
 
