@@ -59,6 +59,32 @@ export function turnstileMisconfigured(env) {
   return Boolean(turnstileSiteKey(env)) !== Boolean(turnstileSecretKey(env));
 }
 
+/**
+ * 期望的 hostname 白名单（官方推荐做法）。
+ * 解析 TURNSTILE_HOSTNAMES="a.com,b.com"，去掉空项与首尾空白。
+ * 官方提醒：生产环境白名单里不要出现 localhost / 127.0.0.1。
+ */
+export function turnstileHostnames(env) {
+  const raw = String((env && env.TURNSTILE_HOSTNAMES) || '');
+  return raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+
+/**
+ * hostname 允许列表判定（官方建议：服务端同时校验 hostname / action）。
+ *   1) 显式配置 TURNSTILE_HOSTNAMES → 必须命中白名单；
+ *   2) 未配置 → 退化为「必须等于本次请求的 Host」，等效更严格，且不会把用户锁死；
+ *   3) 官方测试密钥返回 dummy-key.invalid → 跳过（仅用于本地自测）。
+ */
+export function turnstileHostnameAllowed(env, hostname, requestHost) {
+  const h = String(hostname || '').trim().toLowerCase();
+  if (!h || h === 'dummy-key.invalid') return true; // 测试密钥无真实域名
+  const explicit = turnstileHostnames(env);
+  if (explicit.length) return explicit.indexOf(h) >= 0;
+  const req = String(requestHost || '').trim().toLowerCase();
+  if (!req) return true; // 拿不到 Host 则不做此项判断（其余校验仍然生效）
+  return h === req;
+}
+
 /** 中国区部署可设 TURNSTILE_API_ORIGIN=https://challenges.cloudflare-cn.com */
 export function turnstileOrigin(env) {
   const raw = String((env && env.TURNSTILE_API_ORIGIN) || '').trim().replace(/\/+$/, '');
@@ -107,7 +133,7 @@ async function uuidFromText(text) {
  * 服务端校验 Turnstile token（Siteverify）。失败一律拒绝（fail closed）。
  * 返回 { ok, code, hostname }；code 只进服务端日志，不回给客户端。
  */
-export async function verifyTurnstileToken(env, token, ip) {
+export async function verifyTurnstileToken(env, token, ip, requestHost) {
   const secret = turnstileSecretKey(env);
   if (!secret) return { ok: true, code: 'disabled' };
 
@@ -118,6 +144,7 @@ export async function verifyTurnstileToken(env, token, ip) {
   const payload = { secret, response };
   const remoteip = normalizeIp(ip);
   if (remoteip) payload.remoteip = remoteip;
+  // 幂等键：同一 token 的网络重试视为同一次校验，不会被误判成"token 重放"
   payload.idempotency_key = await uuidFromText(response);
 
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -125,26 +152,35 @@ export async function verifyTurnstileToken(env, token, ip) {
     try {
       const res = await fetch(`${turnstileOrigin(env)}/turnstile/v0/siteverify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(payload).toString(),
+        signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) {
-        if (attempt === 0) continue;
+        if (attempt === 0) continue; // 网络抖动重试（同幂等键）
         return { ok: false, code: 'http-' + res.status };
       }
       data = await res.json();
     } catch (e) {
-      if (attempt === 0) continue;
+      if (attempt === 0) continue; // 网络异常/超时重试
       return { ok: false, code: 'network-error' };
     }
 
     if (!data || typeof data !== 'object') return { ok: false, code: 'bad-response' };
     if (data.success === true) {
-      if (data.action && data.action !== TURNSTILE_ACTION) return { ok: false, code: 'action-mismatch' };
-      return { ok: true, code: 'ok', hostname: String(data.hostname || '') };
+      // 官方建议：action 与预期不符也要拒绝（测试密钥不返回 action，跳过该判断）
+      if (data.action && data.action !== TURNSTILE_ACTION) {
+        return { ok: false, code: 'action-mismatch' };
+      }
+      const hostname = String(data.hostname || '');
+      if (!turnstileHostnameAllowed(env, hostname, requestHost)) {
+        return { ok: false, code: 'hostname-mismatch' };
+      }
+      return { ok: true, code: 'ok', hostname };
     }
 
     const codes = Array.isArray(data['error-codes']) ? data['error-codes'] : [];
+    // internal-error 是 Cloudflare 侧故障，可安全重试；timeout-or-duplicate（token 已用过/过期）不能重试
     if (codes.indexOf('internal-error') >= 0 && attempt === 0) continue;
     return { ok: false, code: codes.join(',') || 'unknown' };
   }

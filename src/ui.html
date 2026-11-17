@@ -634,7 +634,7 @@
     fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token, turnstileToken: tsToken }),
+      body: JSON.stringify({ token: token, turnstileToken: tsToken, 'cf-turnstile-response': tsToken }),
       credentials: 'same-origin'
     }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });

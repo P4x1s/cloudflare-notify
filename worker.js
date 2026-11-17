@@ -551,8 +551,7 @@ const UI_HTML = `<!DOCTYPE html>
       ['人机验证 TURNSTILE', d.turnstileEnabled || !d.turnstileMisconfigured,
         d.turnstileEnabled ? '已启用，登录需完成人机验证'
           : (d.turnstileMisconfigured ? '配置不完整：TURNSTILE_SITE_KEY 与 TURNSTILE_SECRET_KEY 必须同时设置'
-                                       : '未启用（可选）')],
-    ];
+                                       : '未启用（可选）')],    ];
     var allOk = true;
     var html = '';
     for (var i = 0; i < rows.length; i++) {
@@ -736,7 +735,7 @@ const UI_HTML = `<!DOCTYPE html>
     fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token, turnstileToken: tsToken }),
+      body: JSON.stringify({ token: token, turnstileToken: tsToken, 'cf-turnstile-response': tsToken }),
       credentials: 'same-origin'
     }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
@@ -977,7 +976,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
     fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token, turnstileToken: tsToken }),
+      body: JSON.stringify({ token: token, turnstileToken: tsToken, 'cf-turnstile-response': tsToken }),
       credentials: 'same-origin'
     }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
@@ -1073,6 +1072,16 @@ function turnstileSecretKey(env) {
   return String((env && env.TURNSTILE_SECRET_KEY) || '').trim();
 }
 
+/**
+ * 期望的 hostname 白名单（官方推荐做法）。
+ * 解析 TURNSTILE_HOSTNAMES="a.com,b.com"，去掉空项与首尾空白。
+ * 官方提醒：生产环境白名单里不要出现 localhost / 127.0.0.1。
+ */
+function turnstileHostnames(env) {
+  const raw = String((env && env.TURNSTILE_HOSTNAMES) || '');
+  return raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+
 /** 两个变量都在才算启用 */
 function turnstileEnabled(env) {
   return Boolean(turnstileSiteKey(env)) && Boolean(turnstileSecretKey(env));
@@ -1125,8 +1134,13 @@ async function uuidFromText(text) {
  * 服务端校验 Turnstile token（Siteverify）。
  * 返回 { ok, code, hostname }；code 只写进服务端日志，不返回给客户端（避免泄露内部细节）。
  * 失败一律拒绝（fail closed）：宁可让人重试，也不放行未经验证的请求。
+ *
+ * 按官方「已有 widget」接入流程实现：
+ *   - Siteverify 用 application/x-www-form-urlencoded，10 秒超时；
+ *   - 必须校验 success === true、action 一致、hostname 在允许列表内；
+ *   - 绝不在浏览器里调 Siteverify（浏览器 → 自己的后端 → siteverify）。
  */
-async function verifyTurnstileToken(env, token, ip) {
+async function verifyTurnstileToken(env, token, ip, requestHost) {
   const secret = turnstileSecretKey(env);
   if (!secret) return { ok: true, code: 'disabled' };
 
@@ -1145,8 +1159,9 @@ async function verifyTurnstileToken(env, token, ip) {
     try {
       const res = await fetch(`${turnstileOrigin(env)}/turnstile/v0/siteverify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(payload).toString(),
+        signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) {
         if (attempt === 0) continue; // 网络抖动重试（同幂等键）
@@ -1154,7 +1169,7 @@ async function verifyTurnstileToken(env, token, ip) {
       }
       data = await res.json();
     } catch (e) {
-      if (attempt === 0) continue; // 网络异常重试
+      if (attempt === 0) continue; // 网络异常/超时重试
       return { ok: false, code: 'network-error' };
     }
 
@@ -1164,7 +1179,11 @@ async function verifyTurnstileToken(env, token, ip) {
       if (data.action && data.action !== TURNSTILE_ACTION) {
         return { ok: false, code: 'action-mismatch' };
       }
-      return { ok: true, code: 'ok', hostname: String(data.hostname || '') };
+      const hostname = String(data.hostname || '');
+      if (!turnstileHostnameAllowed(env, hostname, requestHost)) {
+        return { ok: false, code: 'hostname-mismatch' };
+      }
+      return { ok: true, code: 'ok', hostname };
     }
 
     const codes = Array.isArray(data['error-codes']) ? data['error-codes'] : [];
@@ -1173,6 +1192,22 @@ async function verifyTurnstileToken(env, token, ip) {
     return { ok: false, code: codes.join(',') || 'unknown' };
   }
   return { ok: false, code: 'unknown' };
+}
+
+/**
+ * hostname 允许列表判定（官方建议：服务端同时校验 hostname / action）。
+ *   1) 显式配置 TURNSTILE_HOSTNAMES → 必须命中白名单；
+ *   2) 未配置 → 退化为「必须等于本次请求的 Host」，等效更严格，且不会把用户锁死；
+ *   3) 官方测试密钥返回 dummy-key.invalid → 跳过（仅用于本地自测）。
+ */
+function turnstileHostnameAllowed(env, hostname, requestHost) {
+  const h = String(hostname || '').trim().toLowerCase();
+  if (!h || h === 'dummy-key.invalid') return true; // 测试密钥无真实域名
+  const explicit = turnstileHostnames(env);
+  if (explicit.length) return explicit.indexOf(h) >= 0;
+  const req = String(requestHost || '').trim().toLowerCase();
+  if (!req) return true; // 拿不到 Host 则不做此项判断（其余校验仍然生效）
+  return h === req;
 }
 
 // ------------------------------ 客户端组件 ------------------------------
@@ -1748,7 +1783,7 @@ async function serverchanSend(env, key, data) {
   });
 }
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 
 export default {
   async fetch(request, env) {
@@ -1779,12 +1814,14 @@ export default {
           const verdict = await verifyTurnstileToken(
             env,
             body.turnstileToken || body['cf-turnstile-response'],
-            ip
+            ip,
+            url.hostname
           );
           if (!verdict.ok) {
             // 只记服务端日志，不把具体错误码回给客户端
             console.warn('[notify] turnstile rejected:', verdict.code);
-            return json({ ok: false, error: '人机验证未通过，请重试' }, 401);
+            // 官方语义：人机验证未通过属于"禁止访问" → 403（区别于密钥错误的 401）
+            return json({ ok: false, error: '人机验证未通过，请重试' }, 403);
           }
         }
         if (!provided || !timingSafeEqual(provided, expected)) {
@@ -1878,6 +1915,7 @@ export default {
             turnstileSiteKeySet: Boolean(turnstileSiteKey(env)),
             turnstileSecretKeySet: Boolean(turnstileSecretKey(env)),
             turnstileMisconfigured: turnstileMisconfigured(env),
+            turnstileHostnames: turnstileHostnames(env),
           },
         });
       }

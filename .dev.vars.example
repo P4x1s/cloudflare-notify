@@ -38,3 +38,11 @@ TURNSTILE_SECRET_KEY=
 # 中国大陆部署可选：改用中国区源站（组件与 Siteverify 接口同步切换）。
 # 留空 = 全球站 https://challenges.cloudflare.com
 # TURNSTILE_API_ORIGIN=https://challenges.cloudflare-cn.com
+
+# 允许的域名白名单（可选，逗号分隔，不写 www/协议/端口）。
+# 官方建议服务端同时校验 action 与 hostname，防止别处的 token 被搬来复用。
+#   - 留空 = 退化为「hostname 必须等于当前访问的域名」，同样能防跨站复用，
+#            且不会因为漏配而把用户锁在门外。
+#   - 填了 = 严格白名单，只有列表内的域名能通过校验。
+# 注意：生产环境不要填 localhost / 127.0.0.1（官方明确提醒）。
+# TURNSTILE_HOSTNAMES=ntfy.588816.xyz

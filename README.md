@@ -88,7 +88,7 @@ cloudflare-notify/
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
 | `GET` | `/` | `READ_TOKEN` 或会话 Cookie（**服务端鉴权**） | 通知查看页面。未验证时只返回最小登录页，不含任何密钥/地址 DOM |
-| `POST` | `/api/login` | 请求体 `{"token":"<READ_TOKEN>"}` | 验证通过签发 HttpOnly 会话 Cookie；失败次数过多返回 429。**启用 Turnstile 时还需带 `turnstileToken`** |
+| `POST` | `/api/login` | 请求体 `{"token":"<READ_TOKEN>"}` | 验证通过签发 HttpOnly 会话 Cookie；失败次数过多返回 429。**启用 Turnstile 时还需带 `turnstileToken`**（服务端校验失败返回 403） |
 | `POST` | `/api/logout` | 无 | 清除会话 Cookie |
 | `GET` | `/api/status` | `READ_TOKEN` 或会话 Cookie | 服务状态与是否启用密钥；`diagnostics` 含 Turnstile 配置自检 |
 | `GET` | `/send` | 轮换密钥或 SEND_TOKEN | **通过 URL 发送消息（最简方式）** |
@@ -111,7 +111,7 @@ cloudflare-notify/
 > - 直接访问 `/?token=<READ_TOKEN>` 也能进入：服务端会换发 Cookie 并 **302 到不带 token 的干净地址**，避免密钥留在浏览器历史里。
 >
 > **Turnstile 人机验证（v1.5.0，可选）**：启用后 `/api/login` 还需携带 `turnstileToken`（前端组件产出，服务端 Siteverify 校验）。
-> 校验顺序是「先 Turnstile → 再比对 `READ_TOKEN`」，无法绕过；校验失败返回 401 且**不透露具体错误码**。详见 [4.3](#43-turnstile-人机验证可选v150-起)。
+> 校验顺序是「先 Turnstile → 再比对 `READ_TOKEN`」，无法绕过；人机验证失败返回 **403**、密钥错误返回 **401**，均**不透露具体错误码**。详见 [4.3](#43-turnstile-人机验证可选v150-起)。
 
 | `OPTIONS` | 任意 | 无 | CORS 预检 |
 
@@ -301,6 +301,7 @@ APP_NAME = "Cloudflare Notify"      # 非敏感变量
 | `WECOM_WEBHOOK` | Secret | 可选 | 同上 | 企业微信群机器人 Webhook；配置后消息主动推到群 |
 | `TURNSTILE_SITE_KEY` | var | 可选 | `.dev.vars` / Dashboard → Variables | Turnstile 公开 site key（`0x` 开头）；必须与 `TURNSTILE_SECRET_KEY` **同时设置**才启用 |
 | `TURNSTILE_SECRET_KEY` | Secret | 可选 | `wrangler secret put` | Turnstile secret key；只放 Secrets，绝不写进代码 |
+| `TURNSTILE_HOSTNAMES` | var | 可选 | `.dev.vars` / Dashboard → Variables | 允许的域名白名单，逗号分隔；留空 = 退化为「hostname 必须等于当前访问域名」 |
 | `TURNSTILE_API_ORIGIN` | var | 可选 | 同上 | 中国大陆部署用 `https://challenges.cloudflare-cn.com`；留空 = 全球站 |
 | `APP_NAME` | var | 否 | `wrangler.toml` | 展示名称 |
 | `meta:sendkey` | KV（自动生成） | 否 | Dashboard KV / 轮换接口 | 轮换推送密钥，软件填这个；由 `/api/key/rotate` 写入，无需手动配置 |
@@ -325,30 +326,56 @@ npx wrangler secret put READ_TOKEN
 
 **默认关闭，不配置就完全不影响现有部署**（不加载任何外部资源、不放宽 CSP）。
 
-#### 开通步骤
+本项目的实现严格对齐 Cloudflare 官方 **「已有 widget 接入流程」**（[Turnstile 接入指南](https://developers.cloudflare.com/turnstile/spin/prompt.md)）：复用已有 widget 的 site key、**不新建 widget**；服务端调 Siteverify 校验 `success` / `action` / `hostname` 三项；Siteverify **只在后端**调用，绝不从浏览器发起。
 
-1. Cloudflare Dashboard → 左侧 **Turnstile** → **Add widget**
-2. 填写：
-   - **Widget name**：随意，例如 `cloudflare-notify`
-   - **Widget Domain**：填你的部署域名（如 `ntfy.588816.xyz`）；本地调试可额外加 `localhost`
-   - **Widget Mode**：选 **Managed**（默认，Cloudflare 自动判定风险）
-3. 创建后拿到两个 key：
-   - **Site Key**（`0x` 开头）—— 公开，可放普通变量
-   - **Secret Key** —— 保密，**只能放 Secrets**
+#### A. 已有 widget（官方推荐路径）
 
-#### 配置
+widget 已经在 Cloudflare 控制台建好了，直接复用：
+
+1. Dashboard → **Turnstile** → 点开你已有的 widget，记下 **Site Key**（`0x` 开头）与 **Secret Key**。
+2. 确认 **Widget Domain** 里包含你的部署域名（如 `ntfy.588816.xyz`）。
+   —— Turnstile 按**浏览器访问的 hostname** 匹配，域名不在列表里组件不会签发 token（这是最常见的「配好了却不出组件」原因）。
+3. 按下面「B. 配置」把两个 key 填进去即可。
+
+> **不需要**重新创建 widget。官方流程明确要求：保留已有 site key，**不要创建替代 widget**。
+
+#### B. 配置
 
 ```bash
-# 公开 site key，放普通变量即可
+# 公开 site key —— 放普通变量即可
 npx wrangler secret put TURNSTILE_SITE_KEY      # 或写进 wrangler.toml [vars]
 
-# secret key，只能走 Secrets
+# secret key —— 只能走 Secrets，绝不进 Git
 npx wrangler secret put TURNSTILE_SECRET_KEY
+
+# 可选：域名白名单（逗号分隔）
+npx wrangler secret put TURNSTILE_HOSTNAMES
 ```
 
 Dashboard 对应位置：**Settings** → **Variables and Secrets**。
 
-#### 三个关键设计（为什么不填也能用）
+| 变量 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `TURNSTILE_SITE_KEY` | Text（公开） | ✅ | 已有 widget 的 site key |
+| `TURNSTILE_SECRET_KEY` | **Secret** | ✅ | 已有 widget 的 secret key，**绝不写进代码或提交到 Git** |
+| `TURNSTILE_HOSTNAMES` | Text | 可选 | 允许的域名白名单，逗号分隔。留空 = 退化为「hostname 必须等于当前访问域名」，同样能防跨站 token 复用，且不会因漏配把人锁死 |
+| `TURNSTILE_API_ORIGIN` | Text | 可选 | 中国大陆部署填 `https://challenges.cloudflare-cn.com` |
+
+#### C. 服务端校验做了什么（对齐官方流程）
+
+| 校验项 | 规则 | 原因 |
+| --- | --- | --- |
+| `success` | 必须严格等于 `true` | 官方核心要求 |
+| `action` | 必须等于 `login` | 官方建议，防止 token 被挪到别的受保护操作上用 |
+| `hostname` | 必须在允许列表内 | 官方建议，防止别处的 token 被搬来本站复用 |
+| `response` 长度 | ≤ 2048 字符 | 官方限制 |
+| 请求形态 | `application/x-www-form-urlencoded` + **10 秒超时** | 官方规范写法 |
+| `remoteip` | 传入客户端 IP | 官方可选参数，有助于风控 |
+| `idempotency_key` | 同一 token 的网络重试复用同一键 | 官方说明：带同一幂等键的重试**不会**被误判成 token 重放 |
+
+**失败一律拒绝（fail closed）**：校验不通过返回 **403**，且**只返回「人机验证未通过，请重试」**，具体错误码只写服务端日志，不外泄。密钥本身错误仍返回 401（两者语义不同，便于排障）。
+
+#### D. 三个关键设计（为什么不填也能用）
 
 | 设计 | 原因 |
 | --- | --- |
@@ -356,13 +383,14 @@ Dashboard 对应位置：**Settings** → **Variables and Secrets**。
 | **服务端 Siteverify 校验，不信前端 token** | 官方明确：客户端组件本身**不构成保护**，token 可伪造。必须在服务端调 `https://challenges.cloudflare.com/turnstile/v0/siteverify` 校验 `secret` + `response` |
 | **失败后前端自动 reset()** | token **单次使用**、生成后 **300 秒过期**，校验失败必须重新挑战，不能复用旧 token |
 
-#### 其他说明
+#### E. 其他说明
 
 - **CSP 自动放行**：启用后 `script-src` 与 `frame-src` 自动加入 `https://challenges.cloudflare.com`；未启用时 CSP 与之前完全一致。
 - **中国大陆部署**：设置 `TURNSTILE_API_ORIGIN=https://challenges.cloudflare-cn.com`，组件与校验接口同步切到中国区源站。
 - **测试密钥**：Cloudflare 提供官方测试 site key（`1x00000000000000000000AA`）与 secret key（`1x0000000000000000000000000000000AA`），恒定通过，可用于本地自测。
-- **自检**：`GET /api/status` 的 `diagnostics` 里会返回 `turnstileEnabled` / `turnstileSiteKeySet` / `turnstileSecretKeySet` / `turnstileMisconfigured`，主界面「系统自检」面板也会显示。
+- **自检**：`GET /api/status` 的 `diagnostics` 里会返回 `turnstileEnabled` / `turnstileSiteKeySet` / `turnstileSecretKeySet` / `turnstileMisconfigured` / `turnstileHostnames`，主界面「系统自检」面板也会显示。
 - **组件容器不能 `display:none`**：那样 iframe 会拿到 0 尺寸导致组件显示异常。实现上采用「容器可见后再 render()」策略（`offsetWidth/offsetHeight/getClientRects()` 检测 + 50ms 重试），登录弹层第二次弹出也能正常渲染。
+- **真实 widget 需要真实域名验证**：真实 site key 只在 widget 允许的 hostname 下签发 token。本地 `127.0.0.1` 会出现「组件渲染了但拿不到 token」，这是正常现象，请到真实域名下验证。
 
 ---
 

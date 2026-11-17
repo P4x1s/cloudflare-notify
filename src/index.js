@@ -17,23 +17,25 @@ import uiHtml from './ui.html';
 import {
   CORS_HEADERS,
   SECURITY_HEADERS,
-  json,
-  html,
-  hasPermission,
-  extractToken,
-  timingSafeEqual,
-  createSessionToken,
-  verifySessionToken,
-  getCookie,
-  sessionCookieHeader,
-  clearSessionCookieHeader,
   SESSION_COOKIE,
-  turnstileEnabled,
-  turnstileMisconfigured,
-  turnstileSiteKey,
-  turnstileSecretKey,
-  verifyTurnstileToken,
   applyTurnstile,
+  clearSessionCookieHeader,
+  createSessionToken,
+  extractToken,
+  getCookie,
+  hasPermission,
+  html,
+  json,
+  sessionCookieHeader,
+  timingSafeEqual,
+  turnstileEnabled,
+  turnstileHostnameAllowed,
+  turnstileHostnames,
+  turnstileMisconfigured,
+  turnstileSecretKey,
+  turnstileSiteKey,
+  verifySessionToken,
+  verifyTurnstileToken,
 } from './utils.js';
 import {
   saveMessage,
@@ -43,7 +45,7 @@ import {
   getVersion,
 } from './messages.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 
 // 登录失败限速：按 IP 计数（单 isolate 内尽力而为，生产环境建议再加 WAF 规则）
 const loginAttempts = new Map();
@@ -105,11 +107,13 @@ export default {
           const verdict = await verifyTurnstileToken(
             env,
             body.turnstileToken || body['cf-turnstile-response'],
-            ip
+            ip,
+            url.hostname
           );
           if (!verdict.ok) {
             console.warn('[notify] turnstile rejected:', verdict.code);
-            return json({ ok: false, error: '人机验证未通过，请重试' }, 401);
+            // 官方语义：人机验证未通过属于"禁止访问" → 403（区别于密钥错误的 401）
+            return json({ ok: false, error: '人机验证未通过，请重试' }, 403);
           }
         }
         const provided = String(body.token || body.readToken || '').trim();
@@ -175,6 +179,7 @@ export default {
             turnstileSiteKeySet: Boolean(turnstileSiteKey(env)),
             turnstileSecretKeySet: Boolean(turnstileSecretKey(env)),
             turnstileMisconfigured: turnstileMisconfigured(env),
+            turnstileHostnames: turnstileHostnames(env),
           },
         });
       }
@@ -364,7 +369,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
     fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token, turnstileToken: tsToken }),
+      body: JSON.stringify({ token: token, turnstileToken: tsToken, 'cf-turnstile-response': tsToken }),
       credentials: 'same-origin'
     }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });

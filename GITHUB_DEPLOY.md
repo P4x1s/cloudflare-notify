@@ -314,31 +314,54 @@ https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的key
 
 给登录页加一层 Cloudflare Turnstile 挑战，防暴力破解和脚本自动化。**默认关闭，不配就完全不影响现有部署**（不加载任何外部资源、不放宽 CSP）。
 
-### 步骤 1：在 Cloudflare 创建一个 Turnstile widget
+本项目严格对齐 Cloudflare 官方的 **「已有 widget 接入流程」**（[Turnstile 接入指南](https://developers.cloudflare.com/turnstile/spin/prompt.md)）：**复用已有 widget、不新建**；Siteverify **只在服务端**调用，并同时校验 `success` / `action` / `hostname`。
 
-Dashboard → 左侧菜单 **Turnstile** → **Add widget**，填写：
+### 步骤 1：确认 widget 域名包含你的部署域名
+
+widget 已经建好的话，**这一步直接跳过创建流程**：
+
+- Dashboard → 左侧菜单 **Turnstile** → 点开你已有的 widget
+- 记下 **Site Key**（`0x` 开头）与 **Secret Key**
+- 确认 **Widget Domain** 列表里有你的部署域名（如 `ntfy.588816.xyz`）
+
+> ⚠️ **Turnstile 按浏览器访问的 hostname 匹配 widget 域名。** 域名不在列表里 → 组件渲染了但**永远拿不到 token**，登录永远失败。这是最常见的「配好了却用不了」的原因。
+>
+> 官方流程明确要求：**保留已有的 site key，不要创建替代 widget**。
+
+还没建 widget 才走创建流程：
 
 | 字段 | 填什么 |
 | --- | --- |
 | Widget name | 随意，例如 `cloudflare-notify` |
-| Widget Domain | 你的部署域名，如 `ntfy.588816.xyz`（本地调试可再加 `localhost`） |
+| Widget Domain | 你的部署域名，如 `ntfy.588816.xyz` |
 | Widget Mode | **Managed**（默认，Cloudflare 自动判定风险） |
-
-创建后拿到两个 key：
-
-- **Site Key**（`0x` 开头）—— 公开的，放普通变量就行
-- **Secret Key** —— 保密的，**只能放 Secrets**
 
 ### 步骤 2：填进 Worker
 
 Worker → **Settings** → **Variables and Secrets**：
 
-| 名称 | 类型 | 值 |
-| --- | --- | --- |
-| `TURNSTILE_SITE_KEY` | Text | 上一步的 Site Key（公开） |
-| `TURNSTILE_SECRET_KEY` | **Secret** | 上一步的 Secret Key |
+| 名称 | 类型 | 值 | 必填 |
+| --- | --- | --- | --- |
+| `TURNSTILE_SITE_KEY` | Text | 上一步的 Site Key（公开） | ✅ |
+| `TURNSTILE_SECRET_KEY` | **Secret** | 上一步的 Secret Key | ✅ |
+| `TURNSTILE_HOSTNAMES` | Text | 允许的域名白名单，逗号分隔（如 `ntfy.588816.xyz`） | 可选 |
 
 > ⚠️ **两个必须同时设置才生效。** 只配一个 → 视为「未启用」，并在 `/api/status` 里标 `turnstileMisconfigured: true`。这样即使配错半个，也不会把你自己锁在门外打不开登录页。
+>
+> 🔒 **Secret Key 绝不能写进 `wrangler.toml`、`worker.js` 或提交到 GitHub。** 它只存在于 Cloudflare 后台的 Secrets 里。
+
+命令行等价操作（需先 `wrangler login`）：
+
+```bash
+npx wrangler secret put TURNSTILE_SECRET_KEY   # 交互式输入，不进 shell 历史
+```
+
+`TURNSTILE_SITE_KEY` 是公开的，也可以直接写进 `wrangler.toml` 的 `[vars]`：
+
+```toml
+[vars]
+TURNSTILE_SITE_KEY = "0x4AAAAA..."
+```
 
 ### 步骤 3：验证
 
@@ -357,9 +380,22 @@ curl "https://<你的域名>/api/status" -H "X-Token: <READ_TOKEN>"
   "turnstileEnabled": true,
   "turnstileSiteKeySet": true,
   "turnstileSecretKeySet": true,
-  "turnstileMisconfigured": false
+  "turnstileMisconfigured": false,
+  "turnstileHostnames": ["ntfy.588816.xyz"]
 }
 ```
+
+### 服务端到底校验了什么
+
+| 校验项 | 规则 | 不符合时 |
+| --- | --- | --- |
+| `success` | 必须严格等于 `true` | 403 |
+| `action` | 必须等于 `login` | 403 |
+| `hostname` | 必须在允许列表内 | 403 |
+| `response` 长度 | ≤ 2048 | 403 |
+| 请求形态 | `application/x-www-form-urlencoded` + 10 秒超时 | 403 |
+
+**失败一律拒绝（fail closed）**：对外只返回「人机验证未通过，请重试」，具体错误码（`timeout-or-duplicate` / `invalid-input-response` / `hostname-mismatch` …）**只写服务端日志**，不外泄。密钥本身错误仍返回 401。
 
 ### 常见疑问
 
@@ -370,18 +406,23 @@ curl "https://<你的域名>/api/status" -H "X-Token: <READ_TOKEN>"
 设置变量 `TURNSTILE_API_ORIGIN` = `https://challenges.cloudflare-cn.com`（Text 类型），组件与校验接口会同步切到中国区源站。保存后重新部署/刷新即可生效。
 
 **Q：本地测试用真 key 吗？**
-不用。Cloudflare 官方提供恒定通过的测试密钥：
+推荐用官方测试密钥（恒定通过）：
 
 - Site Key：`1x00000000000000000000AA`
 - Secret Key：`1x0000000000000000000000000000000AA`
 
-写进 `.dev.vars` 即可，本地永远校验通过。
+写进 `.dev.vars`（已被 `.gitignore` 忽略）即可。
+
+> 注意：**真实 site key 只在 widget 允许的 hostname 下签发 token**。用真 key 在 `127.0.0.1` 上测，组件能渲染但拿不到 token——这是正常现象，请到真实域名下验证。
 
 **Q：失败后为什么要求我重新验证？**
-Turnstile token 是**单次使用**且**300 秒过期**的。校验失败后服务端返回 401，前端会调用 `turnstile.reset()` 重新发起挑战——这是官方要求的正确用法，不是 bug。
+Turnstile token 是**单次使用**且**300 秒过期**的。校验失败后服务端返回 403，前端会调用 `turnstile.reset()` 重新发起挑战——这是官方要求的正确用法，不是 bug。
 
 **Q：会不会泄露密钥？**
-不会。Secret Key 只存在于 Cloudflare 后台，Worker 只在**服务端**调用 Siteverify 接口使用它，前端页面里只有公开的 Site Key。校验失败时对外只返回通用提示「人机验证未通过，请重试」，不暴露具体错误码。
+不会。Secret Key 只存在于 Cloudflare 后台，Worker 只在**服务端**调用 Siteverify 接口使用它，前端页面里只有公开的 Site Key。校验失败时对外只返回通用提示，不暴露具体错误码。
+
+**Q：Siteverify 能从浏览器调吗？**
+**不能**，官方明确要求「浏览器 → 自己的后端 → siteverify」。本项目的 Siteverify 调用只在 Worker 里，前端拿到的永远只是页面。
 
 ---
 
@@ -531,6 +572,10 @@ Cloudflare 免费版完全够个人通知使用：
 | `/api/status` 里 `needSendToken:false` | 没设 `SEND_TOKEN` | 按第 5 步添加 Secret |
 | **push 成功但线上还是旧代码** | Workers Builds 的 Git 集成没真正连上（commit 与 Release 都正常，但线上没重新构建） | 按第 9 节「验证自动部署是否真的生效」：登录页源码搜 `window.TS`，搜不到就是没部署；去 Dashboard → Deployments → View build history 看构建日志，或手动 Upload version |
 | **登录页有一块空白，但没人机验证组件** | Turnstile 组件加载失败或容器被隐藏 | ① 容器不能用 `display:none`（iframe 会拿到 0 尺寸）；② 看浏览器控制台是否有 CSP 拦截 `challenges.cloudflare.com`（启用后 CSP 会自动放行，若你额外改过 CSP 需保留）；③ 组件脚本是按需注入的，联网不通会显示「人机验证组件加载失败」 |
+| **组件出现了，但一直转圈/提示验证失败** | **widget 的 Widget Domain 不含当前访问的域名** | Turnstile 按浏览器访问的 hostname 匹配。Dashboard → Turnstile → 你的 widget → 加上 `ntfy.588816.xyz`（含 `www` 与自定义域名，别漏） |
+| **本地能渲染组件但拿不到 token** | 用了真实 site key，本地 hostname 不在 widget 域名列表 | 正常现象。真 key 只在 widget 允许的域名下签发 token；本地自测请用官方测试密钥（`1x00000000000000000000AA`） |
+| **配好后一直返回 403** | `hostname` 校验不通过 | 服务端校验 token 的 hostname 必须等于当前访问域名（或在 `TURNSTILE_HOSTNAMES` 白名单内）。若你用了多个域名，给 `TURNSTILE_HOSTNAMES` 填全 |
+| **只有 key 填了，登录仍然不要人机验证** | 两个变量没同时设置 | 必须 `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` **同时**存在才启用。查 `/api/status` 的 `turnstileMisconfigured` |
 | **登录提示「人机验证未通过，请重试」** | Siteverify 校验未通过 | ① 确认 Secret Key 与 Site Key 属于**同一个 widget**；② token 单次使用且 300 秒过期，刷新页面重新验证；③ 若用的是官方测试密钥，只能用于本地自测 |
 | `/api/status` 里 `turnstileMisconfigured:true` | 只配了 Site Key 或只配了 Secret Key | 两个变量必须**同时设置**；补齐另一个即可自动启用 |
 | `/api/status` 里 `turnstileEnabled:false`（两个都配了） | 变量名写错，或配在了别的 Worker 上 | 核对变量名必须是 `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY`，且在**同一个 Worker** 的 Variables and Secrets 里 |
