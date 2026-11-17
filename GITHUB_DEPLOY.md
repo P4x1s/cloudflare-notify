@@ -84,16 +84,47 @@ Cloudflare 后台有两个入口，名字很像，行为完全不同。**这个�
    | Root directory | 留空（仓库根目录） | 配置文件在根目录 |
    | Build command | 留空 | 单文件 Worker 无需构建 |
    | Deploy command | `npx wrangler deploy` | 若已自动填好就不用改 |
-   | API token | **Create new token**（默认） | **关键：不能留空**，详见下方说明 |
 
    > 官方明确要求：Dashboard 里的 Worker 名称必须匹配 `wrangler.toml` 的 `name`。本仓库该值是 `cloudflare-notify`，照填即可。
 
-   > **API token 别留空（构建认证的关键）**：Workers Builds 在云端构建时不是交互登录，wrangler 靠一个 API token 认证。配置页默认会选中 **Create new token**——Cloudflare 自动生成一个权限恰当的 token 供后续所有构建使用，你无需手动创建。若这一栏被改成 `None` 或留空，构建会报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable` 而失败。**保持默认或选一个已有 token 即可**。漏配了也能补救：该 Worker → **Settings** → **Build** → **API token** → 选 **Create new token** → **Save**，再到 **Deployments** → **Retry** 重新构建，无需改代码。
+   > **关于 API token**：创建向导页里通常没有这一栏，这是正常的——它在项目创建**完成后**的 Worker 设置页里。若构建报 `CLOUDFLARE_API_TOKEN` 未设置，按本步末尾的「构建报 CLOUDFLARE_API_TOKEN 未设置怎么办」处理。
 
 6. 点 **Save and Deploy**，等待首次构建完成（通常十几秒）。
 7. 成功后 Cloudflare 会给出 `https://cloudflare-notify.<你的子域>.workers.dev` 地址。
 
 > 如果构建失败并提示找不到 KV namespace：确认你用的是本仓库的 `wrangler.toml`——它已注释掉占位符 KV 绑定，不会触发这个错误。
+
+### 构建报 `CLOUDFLARE_API_TOKEN` 未设置怎么办
+
+如果构建日志出现：
+
+```
+In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable
+```
+
+原因是 Workers Builds 在云端是非交互构建，wrangler 无法弹窗登录，需要一个 **API token（API 访问令牌）** 认证。**注意：API token 不在上面的创建向导页里**，要去已创建好的 Worker 中设置。按下面 A / B 任一方案即可，二选一。
+
+**方案 A：让 Cloudflare 自动生成（最省事，推荐）**
+
+1. 左侧 **Workers & Pages** → 点开你刚创建的 Worker（名字 `cloudflare-notify`，不是回到 Create 向导）。
+2. 进入该 Worker 后 → **Settings** → **Build**。
+3. 在这一页找到 **API token** 一项，选择 **Create new token**（Cloudflare 自动生成一个权限合适的令牌，之后所有构建都用它，你不用手动建）。
+4. 点 **Save**。
+5. 到 **Deployments** → 找到失败的那次构建 → **Retry**（重试）。
+
+> 官方把这个设置项放在 Worker 的 **Settings → Build** 页，而不是创建项目的向导页——所以在向导里找不到是正常的，别在那里浪费时间。
+
+**方案 B：自己创建令牌，作为构建变量传入（A 找不到该项时用）**
+
+1. 右上角头像 → **My Profile** → **API Tokens** → **Create Token**。
+2. 用一个能部署 Worker 的模板，最快是选 **Edit Cloudflare Workers**；若没有该模板，就自定义，至少包含账户权限 `Workers Scripts: Edit` 和 `Workers KV Storage: Edit`。
+3. 一路 **Continue to summary** → **Create Token** → 复制生成的令牌（**只显示一次**，先存到安全地方）。
+4. 回到该 Worker → **Settings** → **Build** → **Build variables and secrets** → **Add**，添加一条变量：
+   - 名称：`CLOUDFLARE_API_TOKEN`
+   - 值：粘贴刚才复制的令牌（建议选 Secret／加密存储）
+5. **Save** → **Deployments** → **Retry** 重新构建。
+
+> 令牌是你的账户凭证，只放在 Cloudflare 后台，绝不要写进 GitHub 仓库或 `wrangler.toml`。方案 A 和 B 效果相同，都用 wrangler 官方支持的认证方式，任选一个成功即可。
 
 ---
 
@@ -283,7 +314,7 @@ Cloudflare 免费版完全够个人通知使用：
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 404 Not Found | 建成了 Pages | 删掉重建，走 Workers → Create application → GitHub |
-| 构建报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN` | Workers Builds 未绑定 API token（非交互构建无法交互登录） | 该 Worker → Settings → Build → API token → 选 **Create new token** → Save → Deployments → Retry。详见第 2 步说明 |
+| 构建报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN` | Workers Builds 缺 API token（非交互构建无法登录）；创建向导里没有这一栏是正常的 | 见第 2 步「构建报 CLOUDFLARE_API_TOKEN 未设置怎么办」：Worker → Settings → Build → API token → Create new token；找不到就自建令牌加为构建变量 `CLOUDFLARE_API_TOKEN`，再 Retry |
 | 构建失败，提示 Worker name 不匹配 | Dashboard 名称与 `wrangler.toml` 的 `name` 不一致 | 统一填 `cloudflare-notify` |
 | 构建失败，报 KV namespace 找不到 | `wrangler.toml` 里 KV ID 是占位符 | 用本仓库版本（已注释掉 KV 绑定） |
 | 页面能开但发消息 500 | KV 未绑定 | 按第 4 步绑定 `NOTIFICATIONS` |
