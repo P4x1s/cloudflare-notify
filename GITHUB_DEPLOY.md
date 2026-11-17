@@ -499,7 +499,48 @@ https://<你的域名>/<SEND_TOKEN>.send?text=标题&desp=正文
 
 ## 9. 自动部署：改代码后自动上线
 
-通过 Workers Builds 导入后，已自动开启 Git 集成：
+本仓库自带 **GitHub Actions 部署 workflow**（`.github/workflows/deploy.yml`），这是**推荐路径**：不依赖 Dashboard 的 Git 集成，构建日志直接留在 GitHub 上。
+
+### 9.1 启用 GitHub Actions 部署（推荐）
+
+**第一步：准备 Cloudflare 凭据**
+
+| 需要什么 | 从哪拿 | 权限要求 |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Dashboard → 右上角头像 → **My Profile** → **API Tokens** → **Create Token** → 模板选 **Edit Cloudflare Workers** | Workers Scripts: Edit |
+| `CLOUDFLARE_ACCOUNT_ID` | Dashboard → 右侧栏 **Account ID**（或 Workers & Pages 页面右上角） | 公开值 |
+
+**第二步：写进仓库 Secrets**
+
+仓库 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**，建两个：
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+**第三步：触发部署**
+
+- 往 `main` push 一个 commit → 自动触发；或
+- Actions 页面点 **Deploy to Cloudflare Workers** → **Run workflow**
+
+**第四步：看结果**
+
+- Actions 页面看各步骤状态；失败时日志里会明确指出缺哪个 Secret。
+- workflow 最后一步会**自动做版本指纹自检**（访问线上登录页搜 `window.TS`），成功会输出 `✓`。
+- 部署完成后仍建议按 9.3 手动核对一次。
+
+### 9.2 Turnstile 的 Secret 走另一条路
+
+> 🔒 **`TURNSTILE_SECRET_KEY` 不要写进 GitHub Secrets，也不要写进仓库。**
+>
+> Actions 每次部署都会重新发布 Worker，GitHub Secrets 里的值不会被自动同步成 Worker 的运行时变量（除非你显式在 workflow 里 `wrangler secret put`）。正确做法是：
+>
+> **Dashboard → 你的 Worker → Settings → Variables and Secrets** → 添加 `TURNSTILE_SECRET_KEY`（类型选 **Secret**）。
+>
+> 这样它会作为 Worker 的运行时变量持久存在，**每次重新部署都不会丢**。workflow 里有个只读体检步骤，会列出已绑定的 Secret 名称并提示是否缺 `TURNSTILE_SECRET_KEY`（不会打印值）。
+
+### 9.3 用 Workers Builds（Git 集成）也可以
+
+如果 Workers Builds 的 Git 集成已连上（Dashboard → 你的 Worker → **Settings** → **Git** 显示已连接 `P4x1s/cloudflare-notify`），那么：
 
 - 你往 `main` 分支 push 一个 commit → Cloudflare 自动构建并部署新版本。
 - 在 Dashboard 该 Worker → **Deployments** → **View build history** 可看每次构建状态和日志（保留 90 天）。
@@ -512,6 +553,8 @@ npx wrangler versions upload
 ```
 
 这样每次 push 只生成版本，不会自动切到线上，可手动回滚或发布。
+
+> 两种方式可以并存，但**同一个 Worker 同时被两条链路部署**容易版本混乱，建议只留一条。若同时存在，以 GitHub Actions 为准。
 
 ### ⚠️ 验证自动部署是否真的生效（重要）
 
@@ -528,12 +571,14 @@ npx wrangler versions upload
 
 | 检查项 | 怎么做 |
 | --- | --- |
+| Actions 是否触发 | 仓库 → **Actions** 标签页 → 看最新一次运行的状态与日志 |
+| Actions 缺 Secret | 日志会直接写「缺少 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID」，按 9.1 第二步补 |
 | Git 集成是否连上 | Dashboard → Workers & Pages → 你的 Worker → **Settings** → **Git**；应显示已连接 `P4x1s/cloudflare-notify` |
 | 构建是否失败 | Dashboard → 你的 Worker → **Deployments** → **View build history**，看最新一次构建的日志与状态 |
 | 是不是 Pages 项目 | 如果当初建成了 **Pages**（地址是 `xxx.pages.dev`），Git 集成在 **Pages 项目 → Settings → Builds** 里，不在 Workers 里 |
 | 手动兜底 | Dashboard → 你的 Worker → **Deployments** → **Upload version**（或 Edit code 粘贴 `worker.js` 后 Save and deploy） |
 
-> 本项目 v1.5.0 发布时就实测到过「push 后线上仍是 v1.4.0」：GitHub 上 commit 与 Release 都正常，但线上登录页里搜不到新代码特征串，说明 Workers Builds 的 Git 集成当时并未真正生效，需要在 Dashboard 侧补一次手动部署或确认集成连接。
+> 本项目 v1.5.0 发布时就实测到过「push 后线上仍是 v1.4.0」：GitHub 上 commit 与 Release 都正常，但线上登录页里搜不到新代码特征串，说明 Workers Builds 的 Git 集成当时并未真正生效。v1.6.0 起仓库自带 Actions workflow 作为可控的替代路径。
 
 ---
 
@@ -570,7 +615,9 @@ Cloudflare 免费版完全够个人通知使用：
 | 构建失败，报 KV namespace 找不到 | `wrangler.toml` 里 KV ID 是占位符 | 用本仓库版本（已注释掉 KV 绑定） |
 | 页面能开但发消息 500 | KV 未绑定 | 按第 4 步绑定 `NOTIFICATIONS` |
 | `/api/status` 里 `needSendToken:false` | 没设 `SEND_TOKEN` | 按第 5 步添加 Secret |
-| **push 成功但线上还是旧代码** | Workers Builds 的 Git 集成没真正连上（commit 与 Release 都正常，但线上没重新构建） | 按第 9 节「验证自动部署是否真的生效」：登录页源码搜 `window.TS`，搜不到就是没部署；去 Dashboard → Deployments → View build history 看构建日志，或手动 Upload version |
+| **push 成功但线上还是旧代码** | 部署链路没真正生效（commit 与 Release 都正常，但线上没重新构建） | 按第 9 节处理：① 优先用仓库自带的 GitHub Actions（补好 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 两个 Secret）；② 或确认 Workers Builds 的 Git 集成已连接；③ 都不行就手动 Upload version。**自检**：登录页源码搜 `window.TS`，搜不到就是没部署 |
+| **Actions 报「缺少 CLOUDFLARE_API_TOKEN」** | 仓库 Secrets 没配 | 仓库 → Settings → Secrets and variables → Actions → 加 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID` |
+| **Actions 部署成功但 Turnstile 没生效** | `TURNSTILE_SECRET_KEY` 在 Dashboard 而非 GitHub Secrets | Turnstile 的 secret 要加在 **Dashboard → Worker → Variables and Secrets**（类型 Secret），这样重新部署不会丢。workflow 里 `wrangler secret list` 体检步骤会提示 |
 | **登录页有一块空白，但没人机验证组件** | Turnstile 组件加载失败或容器被隐藏 | ① 容器不能用 `display:none`（iframe 会拿到 0 尺寸）；② 看浏览器控制台是否有 CSP 拦截 `challenges.cloudflare.com`（启用后 CSP 会自动放行，若你额外改过 CSP 需保留）；③ 组件脚本是按需注入的，联网不通会显示「人机验证组件加载失败」 |
 | **组件出现了，但一直转圈/提示验证失败** | **widget 的 Widget Domain 不含当前访问的域名** | Turnstile 按浏览器访问的 hostname 匹配。Dashboard → Turnstile → 你的 widget → 加上 `ntfy.588816.xyz`（含 `www` 与自定义域名，别漏） |
 | **本地能渲染组件但拿不到 token** | 用了真实 site key，本地 hostname 不在 widget 域名列表 | 正常现象。真 key 只在 widget 允许的域名下签发 token；本地自测请用官方测试密钥（`1x00000000000000000000AA`） |
