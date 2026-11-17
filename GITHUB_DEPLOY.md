@@ -472,6 +472,28 @@ npx wrangler versions upload
 
 这样每次 push 只生成版本，不会自动切到线上，可手动回滚或发布。
 
+### ⚠️ 验证自动部署是否真的生效（重要）
+
+**push 成功 ≠ 线上已更新。** Git 集成没连上时，push 完全正常，但线上跑的还是旧代码。
+
+**30 秒自检法**（不用看 Dashboard）：
+
+1. 打开 `https://<你的域名>/`，在登录页源码里搜 `window.TS`（v1.5.0 起的特征串）：
+   - **搜到** → 线上已是最新版
+   - **搜不到** → 线上还是旧版本，push 没触发部署
+2. 或者打开 `https://<你的域名>/api/status`（需带 `READ_TOKEN`），看 `version` 字段是不是最新版本号。
+
+**搜不到时的处理顺序**：
+
+| 检查项 | 怎么做 |
+| --- | --- |
+| Git 集成是否连上 | Dashboard → Workers & Pages → 你的 Worker → **Settings** → **Git**；应显示已连接 `P4x1s/cloudflare-notify` |
+| 构建是否失败 | Dashboard → 你的 Worker → **Deployments** → **View build history**，看最新一次构建的日志与状态 |
+| 是不是 Pages 项目 | 如果当初建成了 **Pages**（地址是 `xxx.pages.dev`），Git 集成在 **Pages 项目 → Settings → Builds** 里，不在 Workers 里 |
+| 手动兜底 | Dashboard → 你的 Worker → **Deployments** → **Upload version**（或 Edit code 粘贴 `worker.js` 后 Save and deploy） |
+
+> 本项目 v1.5.0 发布时就实测到过「push 后线上仍是 v1.4.0」：GitHub 上 commit 与 Release 都正常，但线上登录页里搜不到新代码特征串，说明 Workers Builds 的 Git 集成当时并未真正生效，需要在 Dashboard 侧补一次手动部署或确认集成连接。
+
 ---
 
 ## 10. 免费额度说明
@@ -507,6 +529,11 @@ Cloudflare 免费版完全够个人通知使用：
 | 构建失败，报 KV namespace 找不到 | `wrangler.toml` 里 KV ID 是占位符 | 用本仓库版本（已注释掉 KV 绑定） |
 | 页面能开但发消息 500 | KV 未绑定 | 按第 4 步绑定 `NOTIFICATIONS` |
 | `/api/status` 里 `needSendToken:false` | 没设 `SEND_TOKEN` | 按第 5 步添加 Secret |
+| **push 成功但线上还是旧代码** | Workers Builds 的 Git 集成没真正连上（commit 与 Release 都正常，但线上没重新构建） | 按第 9 节「验证自动部署是否真的生效」：登录页源码搜 `window.TS`，搜不到就是没部署；去 Dashboard → Deployments → View build history 看构建日志，或手动 Upload version |
+| **登录页有一块空白，但没人机验证组件** | Turnstile 组件加载失败或容器被隐藏 | ① 容器不能用 `display:none`（iframe 会拿到 0 尺寸）；② 看浏览器控制台是否有 CSP 拦截 `challenges.cloudflare.com`（启用后 CSP 会自动放行，若你额外改过 CSP 需保留）；③ 组件脚本是按需注入的，联网不通会显示「人机验证组件加载失败」 |
+| **登录提示「人机验证未通过，请重试」** | Siteverify 校验未通过 | ① 确认 Secret Key 与 Site Key 属于**同一个 widget**；② token 单次使用且 300 秒过期，刷新页面重新验证；③ 若用的是官方测试密钥，只能用于本地自测 |
+| `/api/status` 里 `turnstileMisconfigured:true` | 只配了 Site Key 或只配了 Secret Key | 两个变量必须**同时设置**；补齐另一个即可自动启用 |
+| `/api/status` 里 `turnstileEnabled:false`（两个都配了） | 变量名写错，或配在了别的 Worker 上 | 核对变量名必须是 `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY`，且在**同一个 Worker** 的 Variables and Secrets 里 |
 | 企业微信没收到消息 | `WECOM_WEBHOOK` 未配或已失效 | 重新获取 Webhook，更新 Secret；点「测试企微推送」验证 |
 | 地址被占用 | workers.dev 子域名全局唯一 | 改 `wrangler.toml` 的 `name`，push 后重新部署 |
 | `workers.dev` 打不开（超时） | 国内网络对该域名不稳定 | 按第 7 步绑定自定义域名 |
