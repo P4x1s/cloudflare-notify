@@ -10,7 +10,8 @@
 
 - [0. 先看清三个概念，避免走弯路](#0-先看清三个概念避免走弯路)
 - [1. 前置准备](#1-前置准备)
-- [2. 从 GitHub 导入部署（核心步骤）](#2-从-github-导入部署核心步骤)
+- [2. 从 GitHub 导入部署（Workers · 核心步骤）](#2-从-github-导入部署核心步骤)
+- [2B. 如果你建的是 Pages 项目（出现 pages.dev 就看这节）](#2b-如果你建的是-pages-项目出现-pagesdev-就看这节)
 - [3. 验证页面能打开](#3-验证页面能打开)
 - [4. 绑定 KV 命名空间（让消息能存下来）](#4-绑定-kv-命名空间让消息能存下来)
 - [5. 配置密钥 Secrets](#5-配置密钥-secrets)
@@ -26,16 +27,21 @@
 
 ## 0. 先看清三个概念，避免走弯路
 
-### Workers 还是 Pages？—— 404 的根源
+### Workers 还是 Pages？—— 两种都能跑，不用删库重建
 
-Cloudflare 后台有两个入口，名字很像，行为完全不同。**这个工具是 Workers，不是 Pages。**
+Cloudflare 后台有两个入口。本项目**两个都支持**，仓库里各放了一份入口文件：
 
-| 入口 | 运行方式 | 本项目的结果 |
+| 入口 | 运行方式 | 用哪个文件 |
 | --- | --- | --- |
-| **Workers**（正确） | 按 `wrangler.toml` 的 `main = "worker.js"` 执行一段服务端代码 | ✅ 页面正常 |
-| Pages（错误） | 找静态 `index.html` 或前端构建产物 | ❌ 找不到 → 404 |
+| **Workers** | 按 `wrangler.toml` 的 `main = "worker.js"` 执行一段服务端代码 | `worker.js` |
+| **Pages** | 用 advanced mode，让根目录的 `_worker.js` 接管全部请求 | `_worker.js`（新建） |
 
-> 你之前遇到的 404，几乎可以确定是建成了 Pages。 Pages 去找静态首页，而本项目没有 `index.html`，返回 404。**删掉重建，走 Workers 入口即可解决。**
+**怎么判断你建的是哪个？只看域名后缀，这是唯一可靠判据：**
+
+- `xxx.<你的子域>.workers.dev` → **Workers**
+- `xxx.pages.dev`，且部署详情里出现 `<hash>.项目名.pages.dev` → **Pages**
+
+> 你之前的 404 是因为建成了 Pages：Pages 默认去找静态 `index.html`，仓库没有，于是 404。**这不是死路，也不用删库重建**——仓库现已加入 `_worker.js`（Pages advanced mode），Pages 项目直接重新部署就能正常运行，你已绑定的自定义域名也会保留。Pages 的操作见第 2B 节。
 
 ### 三种"变量"分别放什么
 
@@ -94,6 +100,39 @@ Cloudflare 后台有两个入口，名字很像，行为完全不同。**这个�
 
 > 如果构建失败并提示找不到 KV namespace：确认你用的是本仓库的 `wrangler.toml`——它已注释掉占位符 KV 绑定，不会触发这个错误。
 
+---
+
+## 2B. 如果你建的是 Pages 项目（出现 pages.dev 就看这节）
+
+**先判断**：部署详情页的 Domains 里只要出现 `xxx.pages.dev`，或 Deployment URL 是 `https://<hash>.项目名.pages.dev`，就是 Pages 项目。此节专门解决它。
+
+好消息：**不用删库重建**。仓库已内置 `_worker.js`（Pages advanced mode 入口），内容与 `worker.js` 完全一致。Pages 会用 `_worker.js` 接管整个站点的所有请求，你已绑定的自定义域名也会保留。你之前看到 404，是因为 Pages 默认找静态 `index.html`，而项目没有——加上 `_worker.js` 后这个问题就消失了。
+
+**操作步骤**：
+
+1. **确认仓库已含 `_worker.js`**：到 `https://github.com/P4x1s/cloudflare-notify` 看根目录，应有 `worker.js` 和 `_worker.js` 两个文件。本教程对应版本已包含。若没有，从本仓库拉取最新版本，或复制一份 `worker.js` 命名为 `_worker.js` 提交上去。
+2. **检查构建配置**：进入该 Pages 项目 → **Settings** → **Builds**（或 Build & deploy）：
+   - **Build command（构建命令）**：留空，或填 `exit 0`。**不要**填 `npx wrangler deploy`——那是 Workers 的部署命令，在 Pages 里会制造 `CLOUDFLARE_API_TOKEN` 报错且不会产出 `_worker.js`。
+   - **Build output directory（构建输出目录）**：填 `/`（仓库根目录），确保 Pages 能找到根目录的 `_worker.js`。
+   - **Root directory**：留空。
+3. **重新部署**：配置改动后点 **Save**，再到 **Deployments** 点最新构建的 **Retry**；或 push 任意一次提交触发重建。等待状态变绿。
+4. **验证**：打开 `https://xxx.pages.dev` 或你绑的自定义域名，出现带「配置自检」「发送测试通知」卡片的页面即成功。再访问 `/api/status`，应返回含 `"version": "1.2.0"` 的 JSON。
+
+**Pages 项目的密钥与 KV 配置和 Workers 的菜单位置不同，按这里填**（变量名完全一样，代码不用改）：
+
+| 配置项 | Pages 里的位置 | 变量名 / 说明 |
+| --- | --- | --- |
+| 发送密钥 | Settings → **Environment variables** → Add | `SEND_TOKEN`（选 Production 环境） |
+| 查看密钥（可选） | 同上 | `READ_TOKEN` |
+| 企微推送（可选） | 同上 | `WECOM_WEBHOOK`，值填群机器人 Webhook 地址 |
+| KV 存储 | Settings → **Bindings** → Add → **KV namespace** | Variable name 填 `NOTIFICATIONS`（全大写） |
+
+> 密钥在 Environment variables 里建议选 **Secret（加密）** 类型。环境变量和绑定改动后需 **Redeploy（重新部署）** 才生效。
+>
+> 官方依据：Pages advanced mode 允许用根目录 `_worker.js` 接管全部请求（本项目自身处理所有路径、无静态资源，故无需 `env.ASSETS.fetch()`）；Pages 环境变量在 Settings → Environment variables，KV 绑定在 Settings → Bindings → Add → KV namespace。
+
+---
+
 ### 构建报 `CLOUDFLARE_API_TOKEN` 未设置怎么办
 
 如果构建日志出现：
@@ -104,13 +143,13 @@ In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN e
 
 原因是云端构建是非交互式的，wrangler 无法弹窗登录，需要一个 **API token（API 访问令牌）** 认证。
 
-**先看清一件事：设置页里的「Pages Functions」字样不代表建成了 Pages**
+**先看清一件事：这个报错只可能发生在 Workers 项目**
 
-新版 Cloudflare 控制台把 Workers 和 Pages 的设置页合并了，Workers 项目的「绑定」「运行时」区域也会沿用旧文案写着"定义以下 Pages Functions 可用的资源集""定义 Pages 函数的运行时配置"。**判断是否 Workers 看这两处**：
-- 构建配置里的**构建命令是 `npx wrangler deploy`**；
-- 「运行时」区域有**兼容日期、兼容性标志、出站故障打开/关闭**。
+`CLOUDFLARE_API_TOKEN` 报错来自 `npx wrangler deploy`，这是 **Workers** 的部署命令。新版控制台把 Workers 和 Pages 的设置页合并了，两处的「绑定」「运行时」文案、甚至构建命令栏都可能看起来很像，**不能再靠"构建命令/兼容日期"这些字样判断项目类型**。
 
-两项都符合就是 Workers 项目，**不要删掉重建**——你截图的正是这种，问题只是缺令牌，按下面步骤加即可。真正 Pages 项目的构建命令通常是 `npm run build`，也不会有兼容日期这些 Workers 运行时设置。
+**唯一可靠判据是域名后缀**：去部署详情页看 Domains / Deployment URL——
+- 是 `xxx.<子域>.workers.dev` → Workers 项目，按下面步骤加令牌；
+- 是 `xxx.pages.dev` → Pages 项目，请跳到第 **2B 节**：Pages 根本不需要 `npx wrangler deploy` 和这个令牌，把构建命令改成留空/`exit 0`、用 `_worker.js` 即可，报错自然消失。
 
 **在「变量和密钥」里加令牌（新版中文界面的正确位置）**
 
@@ -151,8 +190,8 @@ In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN e
 
 1. **确认部署真的成功**：进入该 Worker → **Deployments**，看最新一条构建状态是否为 **Success**，且 Active Deployment 指向它。若最近一次是 **Failed**，点 **Retry**。
 2. **确认 `workers.dev` 路由没被关**：该 Worker → **Settings** → **Domains & Routes** → `workers.dev` 应显示 **Enabled**；若是 **Disabled** 就点启用（默认是开启的，但手动关过就会 404）。
-3. **确认访问的是 Workers 而不是 Pages 地址**：地址结尾应是 `.workers.dev`（或你绑定的自定义域名），**不是 `.pages.dev`**。`.pages.dev` 是 Pages 项目，找不到静态 `index.html` 就会 404。
-4. **确认只访问根路径**：地址形如 `https://xxx.workers.dev/`，末尾不要带多余路径。
+3. **确认项目类型与访问地址匹配**：地址结尾是 `.workers.dev` → 按本节排查；地址结尾是 `.pages.dev` → 你建的是 Pages 项目，请直接看 **第 2B 节**（Pages 用 `_worker.js`，不用删库重建）。
+4. **确认只访问根路径**：地址形如 `https://xxx.workers.dev/` 或 `https://xxx.pages.dev/`，末尾不要带多余路径。
 5. **国内网络干扰**：`*.workers.dev` 在国内常被干扰，做第 7 步绑定自定义域名后改用自定义域名访问。
 
 > **如果以上都确认无误仍 404**，请把两样东西发出来以便精确定位：浏览器地址栏的**完整 URL**，以及 404 **页面长什么样**（Cloudflare 品牌错误页 / 浏览器自带错误页 / 其他）。这两项是线上信息、只能由你提供，拿到后即可给出确定结论。
@@ -334,9 +373,10 @@ Cloudflare 免费版完全够个人通知使用：
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
-| 404 Not Found | 建成了 Pages | 删掉重建，走 Workers → Create application → GitHub |
-| 构建报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN` | 云端非交互构建缺 API token，未自动生成 | 见第 2 步：Settings → 构建 → 变量和密钥 → 添加 Secret `CLOUDFLARE_API_TOKEN` → Retry |
-| 设置页出现「Pages Functions / Pages 函数」字样 | 多为新版控制台的复用文案，**不代表建成 Pages** | 看构建命令是否 `npx wrangler deploy`、运行时是否有兼容日期；若是则为 Workers，无需重建 |
+| 404 Not Found，域名是 `.pages.dev` | 建成 Pages 且没有静态 `index.html` | **不用重建**：按第 2B 节用 `_worker.js`，构建命令留空/`exit 0`、输出目录 `/`，重新部署 |
+| 404 Not Found，域名是 `.workers.dev` | 访问地址错或 workers.dev 路由被关 | 按第 3 节：用 Dashboard 的 Visit 按钮打开、检查 Domains & Routes |
+| 构建报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN` | Workers 云端非交互构建缺 API token | 若是 Workers 项目：见第 2 步末尾加 Secret `CLOUDFLARE_API_TOKEN` → Retry；**若是 Pages 项目**：说明构建命令误填了 `npx wrangler deploy`，按第 2B 节改成留空/`exit 0` 即可 |
+| 无法判断是 Workers 还是 Pages | 新版控制台设置页文案共用 | **只看域名后缀**：`.workers.dev` = Workers；`.pages.dev`（含 `<hash>.项目名.pages.dev`）= Pages。不要靠构建命令或「Pages Functions」字样判断 |
 | 构建失败，提示 Worker name 不匹配 | Dashboard 名称与 `wrangler.toml` 的 `name` 不一致 | 统一填 `cloudflare-notify` |
 | 构建失败，报 KV namespace 找不到 | `wrangler.toml` 里 KV ID 是占位符 | 用本仓库版本（已注释掉 KV 绑定） |
 | 页面能开但发消息 500 | KV 未绑定 | 按第 4 步绑定 `NOTIFICATIONS` |
