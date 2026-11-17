@@ -84,8 +84,11 @@ Cloudflare 后台有两个入口，名字很像，行为完全不同。**这个�
    | Root directory | 留空（仓库根目录） | 配置文件在根目录 |
    | Build command | 留空 | 单文件 Worker 无需构建 |
    | Deploy command | `npx wrangler deploy` | 若已自动填好就不用改 |
+   | API token | **Create new token**（默认） | **关键：不能留空**，详见下方说明 |
 
    > 官方明确要求：Dashboard 里的 Worker 名称必须匹配 `wrangler.toml` 的 `name`。本仓库该值是 `cloudflare-notify`，照填即可。
+
+   > **API token 别留空（构建认证的关键）**：Workers Builds 在云端构建时不是交互登录，wrangler 靠一个 API token 认证。配置页默认会选中 **Create new token**——Cloudflare 自动生成一个权限恰当的 token 供后续所有构建使用，你无需手动创建。若这一栏被改成 `None` 或留空，构建会报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable` 而失败。**保持默认或选一个已有 token 即可**。漏配了也能补救：该 Worker → **Settings** → **Build** → **API token** → 选 **Create new token** → **Save**，再到 **Deployments** → **Retry** 重新构建，无需改代码。
 
 6. 点 **Save and Deploy**，等待首次构建完成（通常十几秒）。
 7. 成功后 Cloudflare 会给出 `https://cloudflare-notify.<你的子域>.workers.dev` 地址。
@@ -280,6 +283,7 @@ Cloudflare 免费版完全够个人通知使用：
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 404 Not Found | 建成了 Pages | 删掉重建，走 Workers → Create application → GitHub |
+| 构建报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN` | Workers Builds 未绑定 API token（非交互构建无法交互登录） | 该 Worker → Settings → Build → API token → 选 **Create new token** → Save → Deployments → Retry。详见第 2 步说明 |
 | 构建失败，提示 Worker name 不匹配 | Dashboard 名称与 `wrangler.toml` 的 `name` 不一致 | 统一填 `cloudflare-notify` |
 | 构建失败，报 KV namespace 找不到 | `wrangler.toml` 里 KV ID 是占位符 | 用本仓库版本（已注释掉 KV 绑定） |
 | 页面能开但发消息 500 | KV 未绑定 | 按第 4 步绑定 `NOTIFICATIONS` |
