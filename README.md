@@ -4,6 +4,10 @@
 
 零成本核心：Workers 免费额度 + KV 免费额度 + 免费自定义域名 + 免费 SSL。
 
+![通知中心界面](docs/screenshot-notifications.png)
+
+**[在线体验 →](https://ntfy.588816.xyz/)** · 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+
 ---
 
 ## 1. 功能特性
@@ -25,6 +29,28 @@
 
 ---
 
+## 1.1 界面预览
+
+### 通知中心（折叠态）
+
+整页一个外框，内部用发丝线分区；通知折叠时**标题下方直接给出内容摘要**，不用逐条展开就能读到正文。
+
+![通知中心折叠态](docs/screenshot-notifications.png)
+
+### 单条展开（完整正文）
+
+点击任一条通知展开，保留原始换行并独立滚动；右上角可「全部展开 / 全部折叠」。
+
+![通知展开态](docs/screenshot-expanded.png)
+
+### 未鉴权时：服务端只下发登录页
+
+配置了 `READ_TOKEN` 后，未验证的请求**只会拿到这一页**——推送地址与密钥的 DOM 根本不存在于响应体中，删掉任何遮罩也看不到。
+
+![登录页](docs/screenshot-login.png)
+
+---
+
 ## 2. 项目结构
 
 ```
@@ -37,6 +63,10 @@ cloudflare-notify/
 │   ├── utils.js         # 响应封装、安全响应头、Token 提取、会话 Cookie
 │   └── ui.html          # 通知查看页面（内嵌进 Worker，无外部静态资源）
 ├── examples/            # 通用发送脚本（Python，零依赖）
+├── docs/                # README / Release 用界面截图
+│   ├── screenshot-notifications.png   # 通知中心（折叠态）
+│   ├── screenshot-expanded.png        # 单条展开（完整正文）
+│   └── screenshot-login.png           # 未鉴权时的独立登录页
 ├── wrangler.toml        # Cloudflare Workers 配置
 ├── package.json         # 依赖与脚本
 ├── .dev.vars.example    # 本地环境变量模板

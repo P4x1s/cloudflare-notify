@@ -4,6 +4,10 @@
 
 项目仓库：`https://github.com/P4x1s/cloudflare-notify`
 
+部署完成后你看到的界面：
+
+![通知中心界面](docs/screenshot-notifications.png)
+
 ---
 
 ## 目录
