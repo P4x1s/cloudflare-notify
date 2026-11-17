@@ -27,12 +27,30 @@
  * 说明：推送失败（如 URL 失效）只影响主动推送，消息仍会正常存入网页收件箱。
  * ======================================================================
  *
+ * ====================== 密钥分层与安全轮换（v1.3） ======================
+ * 两级密钥，职责分离：
+ *   1) SEND_TOKEN（Secret，管理主密钥）：只在后台管理用，绝不填进软件或 URL。
+ *      用于轮换密钥、查看当前密钥。Secret 在 Workers 运行时只读，故不可轮换。
+ *   2) 轮换推送密钥（KV，meta:sendkey）：由管理接口随机生成，填进软件/URL 的就是它。
+ *      一键轮换后旧密钥立即失效，把泄露影响压到最小。
+ * 发送时两种密钥都可通过（兼容旧配置），但推荐软件只用轮换密钥。
+ *
+ * 管理接口（均需 SEND_TOKEN 作管理凭证，轮换密钥无权调用，防拒绝服务）：
+ *   POST /api/key/rotate  → 生成新轮换密钥并写入 KV，返回 { key }；旧 key 立即失效
+ *   GET  /api/key/current → 查看当前轮换密钥（需管理凭证）
+ *
+ * 更安全的传参（避免密钥进入 URL 历史/日志/Referer/聊天记录）：
+ *   ① Header：X-Token: <key> 或 Authorization: Bearer <key>
+ *   ② POST body：JSON 或表单里带 token 字段
+ *   ③ 方糖 path 形式 /<key>.send（软件只能填 URL 时用），配合定期轮换
+ * ======================================================================
+ *
  * ====================== 方糖 / Server酱 兼容推送 ======================
- * 把 SEND_TOKEN 当作你的「key」，下面这个地址就是你的专属推送地址：
- *   https://<你的域名>/<SEND_TOKEN>.send
+ * 把「轮换推送密钥」当作你的 key（也可用 SEND_TOKEN，但不推荐放进 URL）：
+ *   https://<你的域名>/<key>.send
  * 用法（兼容方糖 text/desp 与 Server酱 title/desp 参数）：
- *   https://<你的域名>/<SEND_TOKEN>.send?text=标题&desp=正文
- *   curl -X POST "https://<你的域名>/<SEND_TOKEN>.send" -d "title=标题&desp=正文"
+ *   https://<你的域名>/<key>.send?text=标题&desp=正文
+ *   curl -X POST "https://<你的域名>/<key>.send" -d "title=标题&desp=正文"
  * 返回同时兼容 errno（方糖）与 code（Server酱³）两种判定：{code:0,errno:0,...}
  * 注意：写死 sc.ftqq.com 域名的软件无法迁移，只有能自定义 Webhook/服务器地址的软件可用。
  * ======================================================================
@@ -219,9 +237,25 @@ const UI_HTML = `<!DOCTYPE html>
 
   <div class="grid">
     <section class="card">
+      <h2>密钥管理与轮换</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
+        两级密钥：<b>管理主密钥 SEND_TOKEN</b> 只用于后台轮换，绝不要填进软件或 URL；<b>轮换推送密钥</b> 才是填进软件的那个，随时可换、换后旧的立即失效。
+      </p>
+      <label for="fMasterToken">管理主密钥（SEND_TOKEN）</label>
+      <input id="fMasterToken" type="password" placeholder="仅用于生成/查看轮换密钥" />
+      <div class="hint" id="keyStatus">当前轮换密钥状态加载中…</div>
+      <div class="row">
+        <button class="primary" id="btnRotateKey">生成新推送密钥</button>
+        <button class="ghost" id="btnViewKey">查看当前密钥</button>
+      </div>
+      <div class="hint" id="rotatedKeyBox" style="display:none;padding:9px 11px;border:1px solid var(--ok);border-radius:9px;word-break:break-all;cursor:pointer"></div>
+      <div class="hint" id="rotateHint" style="margin-top:8px"></div>
+    </section>
+
+    <section class="card">
       <h2>方糖风格推送地址</h2>
       <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
-        把下面这个地址填到任何支持「自定义 Webhook / Server酱 / 方糖」的软件里，即可推送到企业微信。key 就是你的 SEND_TOKEN。
+        把下面这个地址填到任何支持「自定义 Webhook / Server酱 / 方糖」的软件里，即可推送到企业微信。key 优先使用上面的<b>轮换推送密钥</b>（更安全）。
       </p>
       <div class="hint" id="scUrl" style="padding:9px 11px;border:1px dashed var(--border);border-radius:9px;word-break:break-all;cursor:pointer"></div>
       <div class="row">
@@ -289,6 +323,7 @@ const UI_HTML = `<!DOCTYPE html>
     status: null,
     readToken: localStorage.getItem('cfn_read_token') || '',
     sendToken: localStorage.getItem('cfn_send_token') || '',
+    rotatingKey: '',
     messages: [],
     version: '',
     timer: null
@@ -383,17 +418,25 @@ const UI_HTML = `<!DOCTYPE html>
   }
 
   function renderServerchanUrl() {
-    var token = $('fSendToken').value.trim() || state.sendToken;
+    // 优先用轮换密钥（更安全），其次用户手填的密钥，最后浏览器保存的 SEND_TOKEN
+    var token = state.rotatingKey || $('fSendToken').value.trim() || state.sendToken;
     var box = $('scUrl');
     if (!token) {
-      box.textContent = '请先在下方「发送测试通知」里填入 SEND_TOKEN（你设置的发送密钥），这里会生成专属地址。';
-      $('scHint').textContent = '这个 key 就是 SEND_TOKEN。方糖/Server酱类软件填完整地址或 key 即可。';
+      box.textContent = '请先在「密钥管理与轮换」生成推送密钥，或在发送表单填入密钥，这里会生成专属地址。';
+      $('scHint').textContent = '推荐点「生成新推送密钥」——用轮换密钥而不是 SEND_TOKEN，泄露后一键作废。';
       return;
     }
     var url = location.origin + '/' + encodeURIComponent(token) + '.send?text=标题&desp=正文';
     box.textContent = url;
     box.dataset.url = url;
-    $('scHint').textContent = '提示：写死 sc.ftqq.com 域名的软件无法改用本服务；能填「自定义 Webhook / 服务器地址」的软件才可用。';
+    $('scHint').textContent = '写死 sc.ftqq.com 的软件无法改用本服务；能填「自定义 Webhook / 服务器地址」的软件可用。建议在软件里填这个轮换密钥，泄露后点「生成新推送密钥」即可让旧 key 失效。';
+  }
+
+  function renderKeyStatus(s) {
+    var text = s.rotatingKeyReady
+      ? '已生成轮换推送密钥' + (s.rotatedAt ? '（' + fmtTime(s.rotatedAt) + ' 更新）' : '') + '。软件里应填这个 key，不要填 SEND_TOKEN。'
+      : '尚未生成轮换推送密钥。填入 SEND_TOKEN 后点「生成新推送密钥」，Software 用生成出的 key。';
+    $('keyStatus').textContent = text;
   }
 
   function render() {
@@ -451,6 +494,7 @@ const UI_HTML = `<!DOCTYPE html>
         : '企业微信推送：未配置（在 Worker Secrets 设置 WECOM_WEBHOOK 即可开启）。';
       $('btnTestWecom').disabled = !s.wecomConfigured;
       renderDiagnostics(s);
+      renderKeyStatus(s);
       renderServerchanUrl();
       start();
     }).catch(function (err) {
@@ -528,15 +572,18 @@ const UI_HTML = `<!DOCTYPE html>
   });
 
   $('btnCopyCurl').addEventListener('click', function () {
-    var token = $('fSendToken').value.trim() || state.sendToken || '<YOUR_SEND_TOKEN>';
+    var token = state.rotatingKey || $('fSendToken').value.trim() || state.sendToken || '<YOUR_KEY>';
     var title = $('fTitle').value.trim() || '测试标题';
     var content = $('fContent').value.trim() || '测试内容';
-    var cmd = 'curl "' + location.origin + '/send?token=' + encodeURIComponent(token) +
-      '&title=' + encodeURIComponent(title) + '&content=' + encodeURIComponent(content) + '"';
+    // 用 Header 传密钥：密钥不进 URL，不会留在浏览器历史/日志/Referer 中
+    var cmd = 'curl -X POST "' + location.origin + '/api/send" \\\n' +
+      '  -H "Content-Type: application/json" \\\n' +
+      '  -H "X-Token: ' + token + '" \\\n' +
+      "  -d '" + JSON.stringify({ title: title, content: content }) + "'";
     var box = $('curlBox');
     box.textContent = cmd;
     box.style.display = 'block';
-    if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(function () { toast('已复制 curl'); });
+    if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(function () { toast('已复制 curl（密钥走 Header，更安全）'); });
     else toast('已生成，请手动复制');
   });
 
@@ -568,6 +615,61 @@ const UI_HTML = `<!DOCTYPE html>
     }).finally(function () {
       btn.disabled = false;
     });
+  });
+
+  function showRotatedKey(key, isNew) {
+    state.rotatingKey = key;
+    var box = $('rotatedKeyBox');
+    box.textContent = key;
+    box.dataset.key = key;
+    box.style.display = 'block';
+    $('rotateHint').textContent = isNew
+      ? '新密钥已生效，旧密钥立即失效。请到软件里替换成这个新 key。点密钥框可复制。'
+      : '这是当前生效的推送密钥。点密钥框可复制；轮换后此 key 失效。';
+    renderServerchanUrl();
+  }
+
+  function adminHeaders() {
+    var m = $('fMasterToken').value.trim();
+    if (!m) { toast('请先填入管理主密钥 SEND_TOKEN'); return null; }
+    return { 'Content-Type': 'application/json', 'X-Token': m };
+  }
+
+  $('btnRotateKey').addEventListener('click', function () {
+    var btn = this;
+    var headers = adminHeaders();
+    if (!headers) return;
+    btn.disabled = true;
+    fetch('/api/key/rotate', { method: 'POST', headers: headers }).then(function (r) {
+      return r.json().then(function (d) { return { s: r.status, d: d }; });
+    }).then(function (res) {
+      if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
+      showRotatedKey(res.d.key, true);
+      toast('新推送密钥已生成，旧 key 已失效');
+    }).catch(function (err) {
+      toast('轮换失败：' + err.message);
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  $('btnViewKey').addEventListener('click', function () {
+    var btn = this;
+    var m = $('fMasterToken').value.trim();
+    if (!m) { toast('请先填入管理主密钥 SEND_TOKEN'); return; }
+    btn.disabled = true;
+    fetch('/api/key/current', { headers: { 'X-Token': m } }).then(function (r) {
+      return r.json().then(function (d) { return { s: r.status, d: d }; });
+    }).then(function (res) {
+      if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
+      if (!res.d.key) { toast('尚未生成轮换密钥，请先点「生成新推送密钥」'); return; }
+      showRotatedKey(res.d.key, false);
+    }).catch(function (err) {
+      toast('查看失败：' + err.message);
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  $('rotatedKeyBox').addEventListener('click', function () {
+    var key = this.dataset.key;
+    if (key && navigator.clipboard) navigator.clipboard.writeText(key).then(function () { toast('已复制推送密钥'); });
   });
 
   init();
@@ -607,22 +709,50 @@ function html(body, status = 200) {
   });
 }
 
-/** 从 query / X-Token / Authorization: Bearer 三种方式提取密钥 */
-function extractToken(request, url) {
+/**
+ * 从 query / X-Token / Authorization: Bearer / POST body 四种方式提取密钥。
+ * 推荐用 Header 或 body，避免密钥写进 URL（URL 会进浏览器历史、日志、Referer）。
+ * body 是已解析的对象（可选），仅在没有更优先来源时读取。
+ */
+function extractToken(request, url, body) {
   const fromQuery = url.searchParams.get('token') || url.searchParams.get('sendkey');
   if (fromQuery) return fromQuery;
   const fromHeader = request.headers.get('X-Token');
   if (fromHeader) return fromHeader;
   const auth = request.headers.get('Authorization') || '';
   if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
+  if (body && typeof body === 'object') {
+    const fromBody = body.token || body.sendkey || body.key;
+    if (fromBody) return String(fromBody);
+  }
   return null;
 }
 
-/** 密钥未配置时视为公开访问 */
-function hasPermission(request, url, env, kind) {
-  const expected = kind === 'send' ? env.SEND_TOKEN : env.READ_TOKEN;
+/** 读取/校验查看密钥。未配置时视为公开访问。 */
+function hasReadPermission(request, url, env) {
+  const expected = env.READ_TOKEN;
   if (!expected) return true;
   return extractToken(request, url) === expected;
+}
+
+/**
+ * 校验发送凭证：管理主密钥 SEND_TOKEN，或 KV 中当前生效的轮换密钥，任一匹配即可。
+ * 未配置任何发送密钥时视为公开（兼容旧行为）。
+ */
+async function hasSendPermission(request, url, env, body) {
+  const token = extractToken(request, url, body);
+  const master = String(env.SEND_TOKEN || '').trim();
+  const current = await getCurrentSendKey(env);
+  if (!master && !current) return true;
+  if (!token) return false;
+  return token === master || (Boolean(current) && token === current);
+}
+
+/** 管理操作鉴权：只认管理主密钥 SEND_TOKEN，轮换密钥无权调用 */
+function hasAdminPermission(request, url, env, body) {
+  const master = String(env.SEND_TOKEN || '').trim();
+  if (!master) return false;
+  return extractToken(request, url, body) === master;
 }
 
 function generateId() {
@@ -632,10 +762,40 @@ function generateId() {
 // ============================== KV 存储层 ==============================
 const PREFIX = 'msg:';
 const VERSION_KEY = 'meta:version';
+const SENDKEY_KEY = 'meta:sendkey';
+const ROTATED_AT_KEY = 'meta:sendkey_rotated_at';
 const MAX_TIMESTAMP = Number.MAX_SAFE_INTEGER;
 
 async function getVersion(env) {
   return (await env.NOTIFICATIONS.get(VERSION_KEY)) || '0';
+}
+
+/** 用 Web Crypto 生成 32 字节随机密钥（64 位十六进制），比时间戳类 key 更难猜 */
+function generateSendKey() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(function (b) {
+    return b.toString(16).padStart(2, '0');
+  }).join('');
+}
+
+/** 读取当前生效的轮换密钥；无 KV 绑定或从未生成时返回空串 */
+async function getCurrentSendKey(env) {
+  if (!env.NOTIFICATIONS) return '';
+  try {
+    return String((await env.NOTIFICATIONS.get(SENDKEY_KEY)) || '');
+  } catch (e) {
+    return '';
+  }
+}
+
+/** 轮换：生成新密钥写入 KV 并覆盖旧值；旧的立即失效 */
+async function rotateSendKey(env) {
+  const key = generateSendKey();
+  await env.NOTIFICATIONS.put(SENDKEY_KEY, key);
+  await env.NOTIFICATIONS.put(ROTATED_AT_KEY, String(Date.now()));
+  await env.NOTIFICATIONS.put(VERSION_KEY, String(Date.now()));
+  return key;
 }
 
 async function saveMessage(env, input) {
@@ -777,15 +937,16 @@ async function createMessage(env, data) {
 }
 
 /**
- * 方糖 / Server酱 兼容发送：路径中的 key 即 SEND_TOKEN。
+ * 方糖 / Server酱 兼容发送：路径中的 key 为管理主密钥 SEND_TOKEN 或当前轮换密钥。
  * 同时返回 errno（方糖）与 code（Server酱³）以兼容各类客户端判定成功。
  */
 async function serverchanSend(env, key, data) {
-  const expected = String(env.SEND_TOKEN || '').trim();
-  if (!expected) {
+  const master = String(env.SEND_TOKEN || '').trim();
+  const current = await getCurrentSendKey(env);
+  if (!master && !current) {
     return json({ code: 1, errno: 1, errmsg: '服务端未设置 SEND_TOKEN，请先配置密钥', message: '服务端未设置 SEND_TOKEN' }, 401);
   }
-  if (key !== expected) {
+  if (key !== master && !(Boolean(current) && key === current)) {
     return json({ code: 1, errno: 1, errmsg: 'key 错误', message: 'invalid key' }, 401);
   }
   const title = String(data.title || data.text || '').trim();
@@ -814,7 +975,7 @@ async function serverchanSend(env, key, data) {
   });
 }
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 
 export default {
   async fetch(request, env) {
@@ -842,6 +1003,8 @@ export default {
         } catch (e) {
           kvError = (e && e.message) ? e.message : 'KV 不可用';
         }
+        const rotatingKey = await getCurrentSendKey(env);
+        const rotatedAt = kvOk ? String((await env.NOTIFICATIONS.get(ROTATED_AT_KEY)) || '') : '';
         return json({
           ok: true,
           service: 'cloudflare-notify',
@@ -850,6 +1013,8 @@ export default {
           needSendToken: Boolean(env.SEND_TOKEN),
           needReadToken: Boolean(env.READ_TOKEN),
           wecomConfigured: Boolean(env.WECOM_WEBHOOK),
+          rotatingKeyReady: Boolean(rotatingKey),
+          rotatedAt: rotatedAt ? Number(rotatedAt) : 0,
           diagnostics: {
             kvBound: Boolean(env.NOTIFICATIONS),
             kvOk,
@@ -857,14 +1022,41 @@ export default {
             sendTokenSet: Boolean(env.SEND_TOKEN),
             readTokenSet: Boolean(env.READ_TOKEN),
             wecomWebhookSet: Boolean(env.WECOM_WEBHOOK),
-            serverchanReady: Boolean(env.SEND_TOKEN),
+            serverchanReady: Boolean(env.SEND_TOKEN || rotatingKey),
+            rotatingKeyReady: Boolean(rotatingKey),
           },
         });
       }
 
+      // 生成/轮换推送密钥（管理主密钥鉴权；旧密钥立即失效）
+      if (path === '/api/key/rotate' && method === 'POST') {
+        const body = await parseBody(request);
+        if (!hasAdminPermission(request, url, env, body)) {
+          return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        }
+        if (!env.NOTIFICATIONS) {
+          return json({ ok: false, error: '未绑定 KV 命名空间 NOTIFICATIONS，无法轮换' }, 400);
+        }
+        const key = await rotateSendKey(env);
+        return json({
+          ok: true,
+          key,
+          hint: '把这个新 key 填进软件并替换旧值；旧 key 已立即失效。',
+        });
+      }
+
+      // 查看当前推送密钥（管理主密钥鉴权）
+      if (path === '/api/key/current' && method === 'GET') {
+        if (!hasAdminPermission(request, url, env)) {
+          return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        }
+        const key = await getCurrentSendKey(env);
+        return json({ ok: true, key, configured: Boolean(key) });
+      }
+
       // 读取通知（增量检查）
       if (path === '/api/messages' && method === 'GET') {
-        if (!hasPermission(request, url, env, 'read')) {
+        if (!hasReadPermission(request, url, env)) {
           return json({ ok: false, error: 'unauthorized' }, 401);
         }
         const version = await getVersion(env);
@@ -882,17 +1074,18 @@ export default {
         });
       }
 
-      // 发送消息：POST
+      // 发送消息：POST（密钥可放 query / Header / body）
       if ((path === '/api/send' || path === '/send') && method === 'POST') {
-        if (!hasPermission(request, url, env, 'send')) {
+        const body = await parseBody(request);
+        if (!(await hasSendPermission(request, url, env, body))) {
           return json({ ok: false, error: 'invalid token' }, 401);
         }
-        return await createMessage(env, await parseBody(request));
+        return await createMessage(env, body);
       }
 
       // 发送消息：GET（URL 直发）
       if ((path === '/api/send' || path === '/send') && method === 'GET') {
-        if (!hasPermission(request, url, env, 'send')) {
+        if (!(await hasSendPermission(request, url, env))) {
           return json({ ok: false, error: 'invalid token' }, 401);
         }
         return await createMessage(env, {
@@ -905,7 +1098,7 @@ export default {
 
       // 测试企业微信 Webhook 连通性
       if (path === '/api/test-wecom' && method === 'POST') {
-        if (!hasPermission(request, url, env, 'send')) {
+        if (!(await hasSendPermission(request, url, env))) {
           return json({ ok: false, error: 'invalid token' }, 401);
         }
         if (!String(env.WECOM_WEBHOOK || '').trim()) {
@@ -922,7 +1115,7 @@ export default {
 
       // 清空
       if (path === '/api/clear' && method === 'POST') {
-        if (!hasPermission(request, url, env, 'read')) {
+        if (!hasReadPermission(request, url, env)) {
           return json({ ok: false, error: 'unauthorized' }, 401);
         }
         return json({ ok: true, deleted: await clearMessages(env) });
@@ -930,7 +1123,7 @@ export default {
 
       // 统计
       if (path === '/api/count' && method === 'GET') {
-        if (!hasPermission(request, url, env, 'read')) {
+        if (!hasReadPermission(request, url, env)) {
           return json({ ok: false, error: 'unauthorized' }, 401);
         }
         return json({ ok: true, total: await countMessages(env) });

@@ -13,7 +13,9 @@
 | URL 发消息 | `GET /send?token=...&title=...&content=...`，浏览器、curl、快捷指令、Webhook 都能用 |
 | API 发消息 | `POST /api/send`，支持 JSON 与表单，兼容方糖的 `title` / `desp` 字段 |
 | 即时查看 | Web 页面每 5 秒自动轮询，无需手动刷新 |
-| 双密钥 | `SEND_TOKEN` 控制发送，`READ_TOKEN` 控制查看/清空；留空即公开 |
+| 密钥分层与轮换 | `SEND_TOKEN` 为管理主密钥（只用于后台轮换），另有可一键随机生成的**轮换推送密钥**填给软件；换后旧密钥立即失效 |
+| 三种安全传参 | 密钥可放 Header（`X-Token` / `Authorization: Bearer`）、POST body 或 URL，避免密钥进入 URL 历史与日志 |
+| 双密钥 | `SEND_TOKEN` 控制发送/管理，`READ_TOKEN` 控制查看/清空；留空即公开 |
 | 自定义域名 | Cloudflare 控制台一键绑定，自动签发证书 |
 | 跨域支持 | 已配置 CORS，可被任意来源的脚本调用 |
 
@@ -47,11 +49,13 @@ cloudflare-notify/
 | --- | --- | --- | --- |
 | `GET` | `/` | 无（页面内再校验 READ_TOKEN） | 通知查看页面 |
 | `GET` | `/api/status` | 无 | 服务状态与是否启用密钥 |
-| `GET` | `/send` | SEND_TOKEN | **通过 URL 发送消息（最简方式）** |
-| `POST` | `/send` | SEND_TOKEN | 表单发送消息 |
-| `POST` | `/api/send` | SEND_TOKEN | JSON / 表单发送消息 |
-| `GET` / `POST` | `/<SEND_TOKEN>.send` | key 即路径中的 SEND_TOKEN | **方糖 / Server酱 兼容端点**，`text`/`title`=标题，`desp`=正文；返回 `errno` 与 `code` 双码 |
-| `POST` | `/api/test-wecom` | SEND_TOKEN | 测试企业微信 Webhook 连通性 |
+| `GET` | `/send` | 轮换密钥或 SEND_TOKEN | **通过 URL 发送消息（最简方式）** |
+| `POST` | `/send` | 轮换密钥或 SEND_TOKEN | 表单发送消息 |
+| `POST` | `/api/send` | 轮换密钥或 SEND_TOKEN | JSON / 表单发送消息（密钥可放 Header/body/query） |
+| `GET` / `POST` | `/<key>.send` | key 为轮换密钥或 SEND_TOKEN | **方糖 / Server酱 兼容端点**，`text`/`title`=标题，`desp`=正文；返回 `errno` 与 `code` 双码 |
+| `POST` | `/api/key/rotate` | **仅** SEND_TOKEN（管理主密钥） | 生成新轮换密钥并写入 KV，旧密钥立即失效；返回 `{ key }` |
+| `GET` | `/api/key/current` | **仅** SEND_TOKEN | 查看当前轮换密钥 |
+| `POST` | `/api/test-wecom` | 轮换密钥或 SEND_TOKEN | 测试企业微信 Webhook 连通性 |
 | `GET` | `/api/messages?limit=50&version=...` | READ_TOKEN | 获取通知列表；带 `version` 且无变化时只返回 `unchanged` |
 | `GET` | `/api/count` | READ_TOKEN | 通知总数 |
 | `POST` | `/api/clear` | READ_TOKEN | 清空全部通知 |
@@ -59,33 +63,37 @@ cloudflare-notify/
 
 ### 3.2 发送消息
 
-**方式 A：URL 直发（推荐给快捷指令 / 浏览器书签 / 监控脚本）**
+**方式 A：URL 直发（快捷指令 / 浏览器书签 / 只能填 URL 的软件）**
 
 ```
-GET https://你的域名/send?token=<SEND_TOKEN>&title=标题&content=正文
+GET https://你的域名/send?token=<轮换密钥>&title=标题&content=正文
 ```
 
 字段别名（兼容方糖习惯）：`title` 可写作 `text`，`content` 可写作 `desp`。
 
 ```
-curl "https://你的域名/send?token=my-secret&title=构建完成&content=耗时%2023s&source=github-actions"
+curl "https://你的域名/send?token=<轮换密钥>&title=构建完成&content=耗时%2023s&source=github-actions"
 ```
 
-**方式 B：JSON API**
+**方式 B：JSON API + Header 传密钥（推荐，密钥不进 URL）**
 
 ```bash
-curl -X POST "https://你的域名/api/send?token=my-secret" \
+curl -X POST "https://你的域名/api/send" \
   -H "Content-Type: application/json" \
+  -H "X-Token: <轮换密钥>" \
   -d '{"title":"告警","content":"CPU 85%","type":"text","source":"server"}'
 ```
 
-也可把密钥放在请求头（三种方式等价）：
+密钥支持四种传法（优先级从高到低）：
 
 ```
-X-Token: my-secret
-Authorization: Bearer my-secret
-?token=my-secret  或  ?sendkey=my-secret
+X-Token: <key>              ← 推荐：不进 URL，不留历史/日志
+Authorization: Bearer <key> ← 推荐：同上
+POST body 的 token 字段     ← 推荐：同上
+?token=<key> 或 ?sendkey=<key> ← 方便，但会进入 URL 历史/日志
 ```
+
+**为什么不建议把密钥长期写在 URL 里**：URL 会被浏览器历史、服务器/代理日志、`Referer` 请求头、聊天记录与截图保存，泄露面远大于 Header/body。因此推荐：给软件的 key 用**轮换密钥**（泄露后一键作废），且能用 Header/body 就不用 URL。
 
 **发送成功响应**
 
@@ -107,7 +115,44 @@ Authorization: Bearer my-secret
 
 **失败响应**：HTTP 401 `{"ok":false,"error":"invalid token"}`；HTTP 400 表示标题和内容都为空。
 
-### 3.3 读取消息
+### 3.3 密钥分层、轮换与安全加固
+
+系统采用两级密钥，职责分离（自 v1.3）：
+
+| 密钥 | 存放位置 | 用途 | 能否轮换 |
+| --- | --- | --- | --- |
+| **管理主密钥** `SEND_TOKEN` | Cloudflare Secret（运行时只读） | 后台管理：生成/查看轮换密钥；也可发送（兼容旧配置） | 否（需在后台改 Secret） |
+| **轮换推送密钥** | KV `meta:sendkey`（64 位随机 hex） | 填进各个软件/URL，日常发送用 | **是，一键生成，旧的立即失效** |
+
+**为何这样设计**：Workers 的 Secret 在运行时无法被代码修改，所以"可轮换的密钥"只能放 KV；而轮换接口本身需要一个不会被轮换掉的凭证鉴权，这个角色由 `SEND_TOKEN` 承担。因此 `SEND_TOKEN` 应视为管理凭证，**绝不填进软件或 URL**；软件里填轮换密钥。
+
+**生成轮换密钥**（Web 页面已内置按钮，也可用 API）：
+
+```bash
+# 用管理主密钥鉴权生成新密钥（Header 或 query 均可）
+curl -X POST "https://你的域名/api/key/rotate" -H "X-Token: <SEND_TOKEN>"
+
+# 返回：{"ok":true,"key":"<64位新密钥>","hint":"..."}
+# 旧密钥此刻起立即失效，把返回的 key 填进软件替换旧值
+
+# 查看当前轮换密钥
+curl "https://你的域名/api/key/current" -H "X-Token: <SEND_TOKEN>"
+```
+
+> 注意：轮换接口只认 `SEND_TOKEN`，轮换密钥无权调用——防止拿到推送密钥的人反过来轮换掉密钥造成拒绝服务。前提是已设置 `SEND_TOKEN`；未设置时轮换接口返回 401。
+
+**让密钥更安全的六种做法（按推荐度）**：
+
+1. **分层**：软件只用轮换密钥，`SEND_TOKEN` 只在后台管理用，永不出现在链接中。
+2. **换传参**：优先用 Header（`X-Token`/`Authorization: Bearer`）或 POST body，密钥不进 URL，避免浏览器历史、日志、`Referer` 与截图泄露。
+3. **定期轮换**：一旦怀疑泄露，立刻点"生成新推送密钥"，旧 key 即时失效，无需重新部署。
+4. **一软件一密钥**（进阶）：本 Demo 只维护一个当前密钥；如需按软件隔离，可给不同软件轮换并分别记录，代价是管理复杂度上升。
+5. **绑定自定义域名 + HTTPS**：走自己的域名，避免 `workers.dev` 的不稳定与中间环节；Cloudflare 自动签发免费证书。
+6. **控制查看权限**：设置 `READ_TOKEN`，避免任何人都能读取全部通知内容。
+
+> 仍有边界需要说明：只要软件只能填 URL（方糖类），key 就必然出现在那一条 URL 里，无法做到"密钥完全不进 URL"。能做的上限是「用可随时作废的轮换密钥 + 定期轮换」，把泄露窗口压到最小；签名/HMAC 这类防重放机制对只支持填 URL 的软件无能为力，故本 Demo 未引入。
+
+### 3.4 读取消息
 
 ```
 GET /api/messages?limit=50
@@ -168,10 +213,11 @@ APP_NAME = "Cloudflare Notify"      # 非敏感变量
 
 | 变量 | 类型 | 必填 | 位置 | 说明 |
 | --- | --- | --- | --- | --- |
-| `SEND_TOKEN` | Secret | 建议 | `.dev.vars` / `wrangler secret put` | 发送密钥；同时是方糖端点的 key；不设置则任何人可发送 |
+| `SEND_TOKEN` | Secret | 建议 | `.dev.vars` / `wrangler secret put` | **管理主密钥**：轮换/查看推送密钥，也可发送；不进 URL；不设置则任何人可发送且无法轮换 |
 | `READ_TOKEN` | Secret | 可选 | 同上 | 查看与清空密钥；不设置则页面公开 |
 | `WECOM_WEBHOOK` | Secret | 可选 | 同上 | 企业微信群机器人 Webhook；配置后消息主动推到群 |
 | `APP_NAME` | var | 否 | `wrangler.toml` | 展示名称 |
+| `meta:sendkey` | KV（自动生成） | 否 | Dashboard KV / 轮换接口 | 轮换推送密钥，软件填这个；由 `/api/key/rotate` 写入，无需手动配置 |
 
 本地：
 
