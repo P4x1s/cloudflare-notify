@@ -517,7 +517,23 @@ https://<你的域名>/<SEND_TOKEN>.send?text=标题&desp=正文
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-**第三步：触发部署**
+**第三步（重要）：了解 `--keep-vars`**
+
+本项目的 `SEND_TOKEN` / `READ_TOKEN` / `WECOM_WEBHOOK` / `TURNSTILE_SECRET_KEY` 都在 **Dashboard** 上配置，而 `wrangler.toml` 里**没有**这些值。
+
+> ⚠️ **`wrangler deploy` 默认会删除 Dashboard 上的全部变量**，再写入配置文件里的那些。如果不加 `--keep-vars`，一次部署就会把登录密钥、企微 webhook、人机验证 secret 全部清空 → 登录失效、推送失效。
+>
+> 仓库自带的 workflow 已经带上了 `--keep-vars`，用 Actions 部署不需要额外操心。
+>
+> **但如果你手动执行 `wrangler deploy`，必须加 `--keep-vars`**：
+>
+> ```bash
+> npx wrangler deploy --keep-vars
+> ```
+>
+> 同理，`wrangler.toml` 里刻意没写 `[[kv_namespaces]]`（KV id 是每账户独有的占位符，写假 id 会让部署直接失败）。部署后请到 Dashboard 确认 **Bindings → NOTIFICATIONS** 还在；workflow 的部署后自检步骤会自动核对这一项。
+
+**第四步：触发部署**
 
 - 往 `main` push 一个 commit → 自动触发；或
 - Actions 页面点 **Deploy to Cloudflare Workers** → **Run workflow**
@@ -617,6 +633,8 @@ Cloudflare 免费版完全够个人通知使用：
 | `/api/status` 里 `needSendToken:false` | 没设 `SEND_TOKEN` | 按第 5 步添加 Secret |
 | **push 成功但线上还是旧代码** | 部署链路没真正生效（commit 与 Release 都正常，但线上没重新构建） | 按第 9 节处理：① 优先用仓库自带的 GitHub Actions（补好 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 两个 Secret）；② 或确认 Workers Builds 的 Git 集成已连接；③ 都不行就手动 Upload version。**自检**：登录页源码搜 `window.TS`，搜不到就是没部署 |
 | **Actions 报「缺少 CLOUDFLARE_API_TOKEN」** | 仓库 Secrets 没配 | 仓库 → Settings → Secrets and variables → Actions → 加 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID` |
+| **手动 `wrangler deploy` 后登录/推送突然失效** | 部署时没加 `--keep-vars`，Dashboard 上的密钥被清空了 | 重新部署一次并加上 `--keep-vars`：`npx wrangler deploy --keep-vars`；然后到 Dashboard → Variables and Secrets 把被清掉的 Secret 重新填回去 |
+| **部署后消息收不到/页面报错** | KV 绑定 `NOTIFICATIONS` 被覆盖掉了 | Dashboard → Worker → Settings → Bindings → KV Namespace，确认变量名是 `NOTIFICATIONS` 且仍在 |
 | **Actions 部署成功但 Turnstile 没生效** | `TURNSTILE_SECRET_KEY` 在 Dashboard 而非 GitHub Secrets | Turnstile 的 secret 要加在 **Dashboard → Worker → Variables and Secrets**（类型 Secret），这样重新部署不会丢。workflow 里 `wrangler secret list` 体检步骤会提示 |
 | **登录页有一块空白，但没人机验证组件** | Turnstile 组件加载失败或容器被隐藏 | ① 容器不能用 `display:none`（iframe 会拿到 0 尺寸）；② 看浏览器控制台是否有 CSP 拦截 `challenges.cloudflare.com`（启用后 CSP 会自动放行，若你额外改过 CSP 需保留）；③ 组件脚本是按需注入的，联网不通会显示「人机验证组件加载失败」 |
 | **组件出现了，但一直转圈/提示验证失败** | **widget 的 Widget Domain 不含当前访问的域名** | Turnstile 按浏览器访问的 hostname 匹配。Dashboard → Turnstile → 你的 widget → 加上 `ntfy.588816.xyz`（含 `www` 与自定义域名，别漏） |

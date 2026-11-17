@@ -63,30 +63,48 @@ jobs:
             echo "::error::缺少 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，请在仓库 Settings → Secrets and variables → Actions 里添加"
             exit 1
           fi
-          # 部署前后都做一次版本指纹校验，确保新代码真的上了线
-          npx wrangler deploy --config wrangler.toml
+
+          # ── 关键：--keep-vars ────────────────────────────────
+          # wrangler deploy 默认会「删除所有 Dashboard 上配置的变量」，
+          # 再写入 wrangler.toml [vars] 里的那些。
+          # 本项目的 SEND_TOKEN / READ_TOKEN / WECOM_WEBHOOK /
+          # TURNSTILE_SECRET_KEY 都在 Dashboard 上，配置文件里没有，
+          # 一旦被清空，登录与推送会立刻失效。
+          # --keep-vars 让部署保留 Dashboard 上的变量与密钥。
+          echo ">>> 使用 --keep-vars 保留 Dashboard 上的变量与 Secret"
+          npx wrangler deploy --config wrangler.toml --keep-vars
           npx wrangler versions list | head -20
 
-      # Turnstile 属于可选功能：site key 公开可放 vars，secret 必须由用户自己放进
-      # Cloudflare Dashboard（或用 wrangler secret put）。这里只做「有没有配」的体检，
-      # 不代替用户写入 secret —— secret 绝不能进仓库、也不进 Actions 日志。
-      - name: Turnstile 状态体检（只读，不写入 secret）
+      # 部署后自检：确认 KV 绑定与关键 Secret 还在。
+      # wrangler.toml 里刻意没写 [[kv_namespaces]]（KV id 是每账户独有的占位符），
+      # 若 deploy 把 NOTIFICATIONS 绑定覆盖掉，消息存取会立刻失效。
+      - name: 部署后自检（KV 绑定与 Secret）
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -uo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "::notice::未配置 CLOUDFLARE_API_TOKEN，跳过体检"
+            echo "::notice::未配置 CLOUDFLARE_API_TOKEN，跳过自检"
             exit 0
           fi
-          echo "--- Worker 上已绑定的 Secret 名称 ---"
-          npx wrangler secret list 2>&1 | head -20 || true
-          if npx wrangler secret list 2>&1 | grep -q 'TURNSTILE_SECRET_KEY'; then
-            echo "::notice::已绑定 TURNSTILE_SECRET_KEY ✓"
+          echo "--- 绑定与变量 ---"
+          npx wrangler deployments list 2>&1 | head -10 || true
+
+          # 用 API 直接读当前 Worker 的绑定
+          bindings="$(curl -s -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/cloudflare-notify/environments/production/bindings" || true)"
+          echo "$bindings" | head -c 1200; echo
+
+          if echo "$bindings" | grep -q '"name":"NOTIFICATIONS"'; then
+            echo "::notice::KV 绑定 NOTIFICATIONS 仍在 ✓"
           else
-            echo "::warning::未绑定 TURNSTILE_SECRET_KEY —— 若要启用人机验证，请在 Dashboard → Variables and Secrets 里添加"
+            echo "::error::KV 绑定 NOTIFICATIONS 丢失！请到 Dashboard → Settings → Bindings → KV Namespace 重新添加（变量名填 NOTIFICATIONS）"
+            echo "::error::在修复前，消息无法存取"
           fi
+
+          echo "--- 已绑定的 Secret 名称 ---"
+          npx wrangler secret list 2>&1 | head -20 || true
 
       - name: Smoke test (版本指纹)
         run: |
