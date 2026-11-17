@@ -182,9 +182,37 @@ In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN e
 
 在地址栏把路径换成 `/api/status` 后回车：
 
-- 返回一段含 `"version": "1.2.0"` 的 JSON → Worker 完全正常。此时首页 404 只是地址或路径写错，回到 3.1 用 **Visit** 按钮打开根路径 `/`。
+- 返回一段含 `"version": "1.4.0"` 的 JSON → Worker 完全正常。此时首页 404 只是地址或路径写错，回到 3.1 用 **Visit** 按钮打开根路径 `/`。
+- 返回 `{"ok":false,"error":"unauthorized"}`（HTTP 401）→ 你配置了 `READ_TOKEN`，接口需要凭据。这**不是错误**：见 3.2.1 用密钥换取会话。
 - 仍返回 Cloudflare 品牌的 404 错误页 → 请求根本没到 Worker，按 3.3 继续排查。
 - 返回 1010 / 1020 错误 → `workers.dev` 的浏览器完整性检查拦截，换普通浏览器，或做第 7 步绑定自定义域名。
+
+### 3.2.1 已配置 `READ_TOKEN` 时怎么验证（v1.4.0 起）
+
+配置 `READ_TOKEN` 后，**页面和只读接口都需要凭据**。此时：
+
+- 浏览器打开 `https://<你的地址>/` → 看到的是**独立登录页**（输入 READ_TOKEN 的那个），不是通知主页。
+- 这不是 bug，是预期行为。
+
+三种进入方式，任选其一：
+
+```bash
+# 方式一：命令行用密钥换会话 Cookie（推荐，密钥不进浏览器历史）
+curl -i -X POST "https://<你的地址>/api/login" \
+  -H "Content-Type: application/json" \
+  -d '{"token":"<READ_TOKEN>"}' -c cookie.txt
+# 之后 curl -b cookie.txt "https://<你的地址>/api/status" 即可
+
+# 方式二：直接给接口带上密钥
+curl -H "X-Token: <READ_TOKEN>" "https://<你的地址>/api/status"
+
+# 方式三：浏览器打开 /?token=<READ_TOKEN>
+# 服务端会换发会话 Cookie 并 302 到干净地址（不带 token），密钥不会留在历史里
+```
+
+浏览器里直接输 `READ_TOKEN` 登录后，服务端会下发 `cfn_session` 会话 Cookie（HttpOnly / SameSite=Strict / 7 天），之后刷新页面都不需要再输。
+
+> **为什么改成了这样？** v1.3 的登录只是前端盖了一层遮罩，页面 HTML 里始终带着推送地址和密钥——用开发者工具删掉那个 div 就能直接看到，属于真实漏洞。v1.4 改成**服务端鉴权后才下发完整页面**：未验证的响应里根本没有那些 DOM。
 
 ### 3.3 仍是 404 的排查顺序
 
@@ -202,7 +230,7 @@ In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN e
 {
   "ok": true,
   "service": "cloudflare-notify",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "single_file": true,
   "needSendToken": false,
   "needReadToken": false,
@@ -215,6 +243,8 @@ In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN e
   }
 }
 ```
+
+> 已配置 `READ_TOKEN` 时这个接口也会返回 401，需按 3.2.1 带凭据访问。
 
 刚部署时 `kvBound/needSendToken` 是 `false` 属于正常——还没绑定，接下来两步补上。
 
@@ -242,10 +272,17 @@ KV 是 Cloudflare 的键值存储，用来保存通知消息。不绑定时页�
 | 变量名 | 是否必填 | 作用 |
 | --- | --- | --- |
 | `SEND_TOKEN` | 强烈建议 | **管理主密钥**：用于轮换/查看推送密钥，也可发送。不进 URL，只在后台管理用。不设则任何人都能发消息且无法轮换 |
-| `READ_TOKEN` | 可选 | 查看/清空密钥；留空则查看页面完全公开 |
+| `READ_TOKEN` | 可选但推荐 | 查看页面与只读接口的查看密钥。**一旦设置，网页会变成需要登录的状态**（未验证只能看到独立登录页，看不到推送地址与密钥）。留空则查看页面完全公开 |
 | `WECOM_WEBHOOK` | 可选 | 企业微信群机器人 Webhook 完整 URL；配了才会主动推群 |
 
-**两级密钥与轮换（v1.3）**：`SEND_TOKEN` 是管理主密钥（Secret，不可轮换），给软件填的应是另一个**轮换推送密钥**——在通知页「密钥管理与轮换」卡片填入 `SEND_TOKEN` 后点「生成新推送密钥」即得，或调用 `POST /api/key/rotate -H "X-Token: <SEND_TOKEN>"`。轮换后旧 key 立即失效，无需重新部署。密钥也可用 `X-Token` Header 或 POST body 传递，避免进入 URL 历史与日志。详见 `README.md` 第 3.3 节。
+**两级密钥与轮换（v1.3）**：`SEND_TOKEN` 是管理主密钥（Secret，不可轮换），给软件填的应是另一个**轮换推送密钥**——在通知页「密钥与轮换」区域填入 `SEND_TOKEN` 后点「生成新推送密钥」即得，或调用 `POST /api/key/rotate -H "X-Token: <SEND_TOKEN>"`。轮换后旧 key 立即失效，无需重新部署。密钥也可用 `X-Token` Header 或 POST body 传递，避免进入 URL 历史与日志。详见 `README.md` 第 3.3 节。
+
+**查看登录与会话（v1.4.0）**：设置了 `READ_TOKEN` 后，访问网页会看到独立登录页，输入 `READ_TOKEN` 即可进入。验证通过后服务端签发 `cfn_session` 会话 Cookie（HMAC 签名、HttpOnly、7 天有效），密钥不会保存在浏览器本地。
+
+- 会话签名密钥就是 `READ_TOKEN` → **改 `READ_TOKEN` 会让所有旧会话立刻失效**，这是最方便的「一键踢下线」。
+- 想退出，点页面右上角「退出」，会清除 Cookie。
+- 同一 IP 5 分钟内登录失败 8 次会被临时锁定（返回 429），防止被暴力猜解。
+- 想要完全公开的查看页，**把 `READ_TOKEN` 删掉**即可（但那样任何人都能看到通知内容）。
 
 **生成 `SEND_TOKEN`**：用任意密码生成器生成 32 位以上随机字符串，或用命令：
 
@@ -377,6 +414,10 @@ Cloudflare 免费版完全够个人通知使用：
 | --- | --- | --- |
 | 404 Not Found，域名是 `.pages.dev` | 建成 Pages 且没有静态 `index.html` | **不用重建**：按第 2B 节用 `_worker.js`，构建命令留空/`exit 0`、输出目录 `/`，重新部署 |
 | 404 Not Found，域名是 `.workers.dev` | 访问地址错或 workers.dev 路由被关 | 按第 3 节：用 Dashboard 的 Visit 按钮打开、检查 Domains & Routes |
+| 打开网页看到的是「访问验证」登录页，不是通知主页 | 设了 `READ_TOKEN`（v1.4.0 起这是预期行为） | 输入 `READ_TOKEN` 进入；或按 3.2.1 用 `?token=` / `X-Token` 访问。**这不是故障** |
+| `/api/status` 返回 `{"ok":false,"error":"unauthorized"}` | 同上，接口也需要凭据 | 按 3.2.1 带 `X-Token` 或会话 Cookie 访问 |
+| 登录提示「尝试次数过多，请稍后再试」 | 同一 IP 5 分钟内失败 8 次被限速 | 等 5 分钟；或换个网络；确认 READ_TOKEN 没输错 |
+| 登录成功后刷新又要求重新登录 | 浏览器拒绝了 Cookie（如 https 与 http 混用、隐私模式） | 用 https 访问；确认地址栏不是 http |
 | 构建报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN` | Workers 云端非交互构建缺 API token | 若是 Workers 项目：见第 2 步末尾加 Secret `CLOUDFLARE_API_TOKEN` → Retry；**若是 Pages 项目**：说明构建命令误填了 `npx wrangler deploy`，按第 2B 节改成留空/`exit 0` 即可 |
 | 无法判断是 Workers 还是 Pages | 新版控制台设置页文案共用 | **只看域名后缀**：`.workers.dev` = Workers；`.pages.dev`（含 `<hash>.项目名.pages.dev`）= Pages。不要靠构建命令或「Pages Functions」字样判断 |
 | 构建失败，提示 Worker name 不匹配 | Dashboard 名称与 `wrangler.toml` 的 `name` 不一致 | 统一填 `cloudflare-notify` |
@@ -407,7 +448,8 @@ Cloudflare 免费版完全够个人通知使用：
 
 | 文件 | 作用 |
 | --- | --- |
-| `worker.js` | 核心单文件：路由、KV 存储、Web 页面、企业微信推送、方糖兼容端点全在这里 |
+| `worker.js` | 核心单文件：路由、KV 存储、Web 页面、企业微信推送、方糖兼容端点、会话鉴权全在这里 |
+| `_worker.js` | 与 `worker.js` 内容完全相同，Pages advanced mode 入口（见第 2B 节） |
 | `wrangler.toml` | Workers 部署配置（已避开占位符 KV 陷阱） |
 | `GITHUB_DEPLOY.md` | 本文档 |
 | `README.md` / `TROUBLESHOOTING.md` | 接口文档与排查手册 |

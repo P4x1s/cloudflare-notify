@@ -11,6 +11,7 @@
     --text: #1f2430;
     --muted: #6b7280;
     --border: #e5e7eb;
+    --line: 1px solid var(--border);
     --primary: #2563eb;
     --primary-hover: #1d4ed8;
     --danger: #dc2626;
@@ -37,15 +38,19 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
                  "Microsoft YaHei", sans-serif;
     background: var(--bg);
+    background-image: radial-gradient(1000px 500px at 12% -8%, rgba(79,140,255,.10), transparent 60%),
+                      radial-gradient(800px 400px at 100% 0%, rgba(124,58,237,.08), transparent 55%);
+    background-attachment: fixed;
     color: var(--text);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 28px 20px 56px; }
 
+  /* ---------- 页头 ---------- */
   header.top {
     display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: 12px; margin-bottom: 24px;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 18px; padding: 0 2px;
   }
   .brand { display: flex; align-items: center; gap: 12px; }
   .brand .logo {
@@ -56,35 +61,49 @@
   }
   .brand h1 { font-size: 19px; margin: 0; letter-spacing: .2px; }
   .brand .sub { font-size: 12px; color: var(--muted); }
-  .status {
-    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
-  }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .dot.live { background: var(--ok); box-shadow: 0 0 0 3px rgba(22,163,74,.15); }
   .dot.error { background: var(--danger); }
 
-  .grid { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
-  @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
-
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 14px; box-shadow: var(--shadow); padding: 20px;
+  /* ---------- 统一面板：整页一个外框，内部只用发丝线分区 ---------- */
+  .panel {
+    background: var(--card); border: var(--line);
+    border-radius: 16px; box-shadow: var(--shadow); overflow: hidden;
   }
-  .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
+  .panel-cols { display: grid; grid-template-columns: 344px minmax(0, 1fr); }
+  .panel-side { border-right: var(--line); min-width: 0; }
+  .panel-main { min-width: 0; }
+  @media (max-width: 980px) {
+    .panel-cols { grid-template-columns: 1fr; }
+    .panel-side { border-right: none; border-bottom: var(--line); }
+  }
 
-  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+  .section { padding: 22px 24px; }
+  .section + .section { border-top: var(--line); }
+  .section h2 { margin: 0 0 4px; font-size: 14px; font-weight: 650; letter-spacing: .2px; }
+  .sec-desc { font-size: 12px; color: var(--muted); margin: 0 0 14px; line-height: 1.65; }
+
+  /* ---------- 表单 ---------- */
+  label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 5px; }
   label:first-of-type { margin-top: 0; }
   input, textarea {
     width: 100%; padding: 9px 11px; border-radius: 9px;
-    border: 1px solid var(--border); background: transparent; color: var(--text);
+    border: var(--line); background: transparent; color: var(--text);
     font: inherit; font-size: 13px; outline: none; transition: border-color .15s;
   }
   input:focus, textarea:focus { border-color: var(--primary); }
-  textarea { min-height: 96px; resize: vertical; }
-  .hint { font-size: 11px; color: var(--muted); margin-top: 5px; word-break: break-all; }
+  textarea { min-height: 92px; resize: vertical; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.6; word-break: break-word; }
+  .hint.box {
+    padding: 9px 11px; border: var(--line); border-radius: 9px;
+    font-size: 12px; color: var(--text);
+  }
+  .hint.box.dashed { border-style: dashed; cursor: pointer; }
+  .hint.box.ok { border-color: var(--ok); color: var(--ok); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
   button {
-    font: inherit; cursor: pointer; border-radius: 9px; border: 1px solid var(--border);
+    font: inherit; cursor: pointer; border-radius: 9px; border: var(--line);
     background: var(--card); color: var(--text); padding: 8px 13px; font-size: 13px;
     transition: background .15s, border-color .15s, opacity .15s;
   }
@@ -94,31 +113,77 @@
   button.ghost { background: transparent; }
   button.danger { color: var(--danger); }
   button:disabled { opacity: .5; cursor: not-allowed; }
-  .row { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
 
+  /* ---------- 自检条 ---------- */
+  .diag-strip { border-bottom: var(--line); background: rgba(79,140,255,.05); }
+  .diag-strip[hidden] { display: none; }
+  .diag-inner { padding: 16px 24px; font-size: 13px; line-height: 1.9; }
+
+  /* ---------- 通知列表 ---------- */
   .list-head {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
+    gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
   }
-  .list-head h2 { margin: 0; }
-  .list-actions { display: flex; gap: 8px; align-items: center; }
+  .list-head h2 { margin: 0 0 0; }
+  .list-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .count { font-size: 12px; color: var(--muted); }
 
   .msg {
-    border: 1px solid var(--border); border-radius: 11px; padding: 13px 15px;
-    margin-bottom: 10px; background: var(--bg); transition: border-color .15s;
+    border: var(--line); border-radius: 11px;
+    margin-bottom: 8px; background: var(--bg); overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
   }
   .msg:hover { border-color: var(--primary); }
-  .msg .m-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-  .msg .m-title { font-weight: 600; font-size: 14px; word-break: break-word; }
-  .msg .m-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .msg.open { box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+  .msg-head {
+    display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px;
+    cursor: pointer; user-select: none;
+  }
+  .msg-head:hover { background: rgba(79,140,255,.05); }
+  .msg-head:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .msg-chevron {
+    flex: none; color: var(--muted); font-size: 11px; line-height: 1.7;
+    transition: transform .18s ease;
+  }
+  .msg.open .msg-chevron { transform: rotate(90deg); color: var(--primary); }
+  .msg-main { flex: 1 1 auto; min-width: 0; }
+  .msg-row { display: flex; align-items: baseline; gap: 8px; }
+  .msg .m-title {
+    flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px; line-height: 1.5;
+    word-break: break-word; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .msg .m-time { font-size: 11px; color: var(--muted); white-space: nowrap; flex: none; }
+  .msg .m-source {
+    font-size: 10px; padding: 1px 7px; border-radius: 999px; flex: none;
+    background: rgba(79,140,255,.12); color: var(--primary);
+    max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* 折叠态的正文摘要：两行 clamp——不展开也能读到内容 */
+  .msg .m-preview {
+    margin-top: 2px; font-size: 12.5px; line-height: 1.55; color: var(--muted);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; word-break: break-word;
+  }
+  .msg .m-preview:empty { display: none; }
+  .msg.open .m-preview { display: none; }
+  .msg .m-hint {
+    flex: none; font-size: 11px; color: var(--muted); margin-top: 2px;
+    opacity: 0; transition: opacity .15s;
+  }
+  .msg:hover .m-hint, .msg-head:focus-visible .m-hint { opacity: .8; }
+  .msg.open .m-hint { display: none; }
+  .msg-detail { padding: 0 14px 12px 35px; }
+  .msg:not(.open) .msg-detail { display: none; }
   .msg .m-body {
-    margin-top: 7px; font-size: 13px; color: var(--text);
-    white-space: pre-wrap; word-break: break-word; opacity: .9;
+    font-size: 13px; color: var(--text); white-space: pre-wrap;
+    word-break: break-word; border-top: var(--line); padding-top: 10px;
+    max-height: 380px; overflow-y: auto;
   }
   .msg .m-meta { margin-top: 8px; font-size: 11px; color: var(--muted); }
+  .toggle-all { font-size: 12px; padding: 5px 10px; }
 
-  .empty { text-align: center; padding: 48px 12px; color: var(--muted); }
+  .empty { text-align: center; padding: 44px 12px; color: var(--muted); }
   .empty .icon { font-size: 34px; opacity: .5; }
   .empty p { margin: 8px 0 0; font-size: 13px; }
 
@@ -134,12 +199,29 @@
     display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 40;
   }
   .overlay.hidden { display: none; }
-  .login { width: 100%; max-width: 360px; }
-  .code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px; background: var(--bg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; word-break: break-all; margin: 8px 0;
+  .login-box {
+    width: 100%; max-width: 360px; background: var(--card);
+    border: var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 24px;
   }
+  .login-box h2 { margin: 0 0 6px; font-size: 16px; }
+
+  /* ---------- 独立登录页 ---------- */
+  .auth-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .auth-card {
+    width: 100%; max-width: 380px; background: var(--card);
+    border: var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 30px 28px;
+  }
+  .auth-card .brand { margin-bottom: 20px; }
+  .auth-card h1 { font-size: 18px; margin: 0 0 6px; }
+  .auth-card .sub { font-size: 12px; color: var(--muted); }
+  .auth-card .lead { font-size: 13px; color: var(--muted); margin: 0 0 18px; line-height: 1.7; }
+  .auth-err {
+    display: none; margin-top: 12px; padding: 9px 11px; border-radius: 9px;
+    background: rgba(220,38,38,.10); color: var(--danger); font-size: 12px;
+  }
+  .auth-err.show { display: block; }
 </style>
 </head>
 <body>
@@ -155,57 +237,98 @@
     <div class="status">
       <span class="dot" id="dot"></span>
       <span id="statusText">正在连接…</span>
+      <button class="ghost" id="btnDiag" style="display:none">配置自检</button>
       <button class="ghost" id="btnLogout" style="display:none">退出</button>
     </div>
   </header>
 
-  <div class="grid">
-    <!-- 发送测试 -->
-    <section class="card">
-      <h2>发送测试通知</h2>
-      <label for="fTitle">标题</label>
-      <input id="fTitle" placeholder="例如：构建完成" />
-      <label for="fContent">内容</label>
-      <textarea id="fContent" placeholder="在这里输入通知正文…"></textarea>
-      <label for="fSendToken">发送密钥（SEND_TOKEN）</label>
-      <input id="fSendToken" type="password" placeholder="留空则使用浏览器保存的值" />
-      <div class="hint" id="sendHint">密钥仅保存在本机浏览器，不会上传到第三方。</div>
-      <div class="row">
-        <button class="primary" id="btnSend">发送通知</button>
-        <button class="ghost" id="btnCopyCurl">复制 curl 示例</button>
-      </div>
-      <div class="hint" id="curlBox" style="display:none"></div>
-    </section>
+  <div class="panel">
+    <div class="diag-strip" id="diagStrip" hidden>
+      <div class="diag-inner" id="diagBody"></div>
+    </div>
 
-    <!-- 消息列表 -->
-    <section class="card">
-      <div class="list-head">
-        <h2>最近通知</h2>
-        <div class="list-actions">
-          <span class="count" id="count"></span>
-          <button class="ghost" id="btnRefresh">刷新</button>
-          <button class="ghost danger" id="btnClear">清空</button>
-        </div>
+    <div class="panel-cols">
+      <div class="panel-side">
+        <section class="section">
+          <h2>推送接入</h2>
+          <p class="sec-desc">
+            把下面这段地址填进任何支持「自定义 Webhook / Server酱 / 方糖」的软件，即可推送到企业微信。
+            key 优先使用<b>轮换推送密钥</b>（泄露后可一键作废）。
+          </p>
+          <div class="hint box dashed" id="scUrl"></div>
+          <div class="row">
+            <button class="ghost" id="btnCopyScUrl">复制推送地址</button>
+          </div>
+          <div class="hint" id="scHint"></div>
+        </section>
+
+        <section class="section">
+          <h2>密钥与轮换</h2>
+          <p class="sec-desc">
+            两级密钥：<b>管理主密钥 SEND_TOKEN</b> 只用于后台管理，绝不要填进软件或 URL；
+            <b>轮换推送密钥</b> 才是填进软件的那个，随时可换、换后旧的立即失效。
+          </p>
+          <label for="fMasterToken">管理主密钥（SEND_TOKEN）</label>
+          <input id="fMasterToken" type="password" placeholder="仅用于生成 / 查看轮换密钥" autocomplete="off" />
+          <div class="hint" id="keyStatus">当前轮换密钥状态加载中…</div>
+          <div class="row">
+            <button class="primary" id="btnRotateKey">生成新推送密钥</button>
+            <button class="ghost" id="btnViewKey">查看当前密钥</button>
+          </div>
+          <div class="hint box ok" id="rotatedKeyBox" style="display:none"></div>
+          <div class="hint" id="rotateHint"></div>
+        </section>
+
+        <section class="section">
+          <h2>发送测试通知</h2>
+          <label for="fTitle">标题</label>
+          <input id="fTitle" placeholder="例如：构建完成" autocomplete="off" />
+          <label for="fContent">内容</label>
+          <textarea id="fContent" placeholder="在这里输入通知正文…"></textarea>
+          <label for="fSendToken">发送密钥（SEND_TOKEN）</label>
+          <input id="fSendToken" type="password" placeholder="留空则使用浏览器保存的值" autocomplete="off" />
+          <div class="hint" id="sendHint">密钥仅保存在本机浏览器，不会上传到第三方。</div>
+          <div class="hint" id="wecomHint"></div>
+          <div class="row">
+            <button class="primary" id="btnSend">发送通知</button>
+            <button class="ghost" id="btnCopyCurl">复制 curl 示例</button>
+            <button class="ghost" id="btnTestWecom">测试企微推送</button>
+          </div>
+          <div class="hint box" id="curlBox" style="display:none"></div>
+        </section>
       </div>
-      <div id="list">
-        <div class="empty"><div class="icon">◇</div><p>加载中…</p></div>
+
+      <div class="panel-main">
+        <section class="section">
+          <div class="list-head">
+            <h2>最近通知</h2>
+            <div class="list-actions">
+              <span class="count" id="count"></span>
+              <button class="ghost toggle-all" id="btnToggleAll">全部展开</button>
+              <button class="ghost" id="btnRefresh">刷新</button>
+              <button class="ghost danger" id="btnClear">清空</button>
+            </div>
+          </div>
+          <div class="hint" style="margin:0 0 12px">折叠时显示标题与内容摘要，点击标题行展开全文。</div>
+          <div id="list">
+            <div class="empty"><div class="icon">◇</div><p>加载中…</p></div>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
   </div>
 </div>
 
-<!-- 登录弹层（仅在服务端设置了 READ_TOKEN 时出现） -->
 <div class="overlay hidden" id="loginOverlay">
-  <div class="card login">
-    <h2>访问验证</h2>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">
-      该通知服务启用了查看密钥，请输入 READ_TOKEN 继续。
-    </p>
-    <label for="loginToken">查看密钥</label>
-    <input id="loginToken" type="password" placeholder="READ_TOKEN" />
+  <div class="login-box">
+    <h2>会话已失效</h2>
+    <p class="sec-desc">为安全起见，页面中的密钥与推送地址已清空。请重新验证以继续。</p>
+    <label for="loginToken">查看密钥（READ_TOKEN）</label>
+    <input id="loginToken" type="password" placeholder="READ_TOKEN" autocomplete="current-password" />
     <div class="row">
-      <button class="primary" id="btnLogin">进入</button>
+      <button class="primary" id="btnLogin">重新验证</button>
     </div>
+    <div class="auth-err" id="loginErr"></div>
   </div>
 </div>
 
@@ -215,13 +338,15 @@
 (function () {
   'use strict';
 
-  var REFRESH_MS = 5000; // 自动刷新间隔
+  var REFRESH_MS = 5000;
   var state = {
     status: null,
-    readToken: localStorage.getItem('cfn_read_token') || '',
     sendToken: localStorage.getItem('cfn_send_token') || '',
+    rotatingKey: '',
     messages: [],
-    version: '', // 数据版本号，用于增量检查
+    expanded: {},
+    allExpanded: false,
+    version: '',
     timer: null
   };
 
@@ -246,22 +371,21 @@
     $('statusText').textContent = text;
   }
 
-  /** 统一请求封装：自动附带查看密钥 */
   function api(path, options) {
     options = options || {};
     var headers = options.headers || {};
-    if (state.readToken) headers['X-Token'] = state.readToken;
     if (options.body && !headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
     return fetch(path, {
       method: options.method || 'GET',
       headers: headers,
-      body: options.body
+      body: options.body,
+      credentials: 'same-origin'
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (res.status === 401) {
-          showLogin();
+          requireReauth();
           throw new Error('unauthorized');
         }
         if (!res.ok || data.ok === false) {
@@ -272,11 +396,23 @@
     });
   }
 
-  function showLogin() {
+  // 会话失效：立刻抹掉页面里已渲染的敏感信息，再要求重新验证
+  function wipeSensitive() {
+    state.rotatingKey = '';
+    var sc = $('scUrl');
+    if (sc) { sc.textContent = ''; sc.dataset.url = ''; }
+    var rk = $('rotatedKeyBox');
+    if (rk) { rk.textContent = ''; rk.dataset.key = ''; rk.style.display = 'none'; }
+    var sh = $('scHint');
+    if (sh) sh.textContent = '';
+  }
+
+  function requireReauth() {
     clearInterval(state.timer);
+    wipeSensitive();
     $('loginOverlay').classList.remove('hidden');
     $('btnLogout').style.display = 'none';
-    setStatus('error', '需要验证');
+    setStatus('error', '需要重新验证');
   }
 
   function fmtTime(ts) {
@@ -285,27 +421,115 @@
     } catch (e) { return String(ts); }
   }
 
+  function previewOf(content) {
+    var s = String(content || '').replace(/\s+/g, ' ').trim();
+    if (!s) return '';
+    return s.length > 140 ? s.slice(0, 140) + '…' : s;
+  }
+
+  function renderDiagnostics(s) {
+    var d = s.diagnostics;
+    if (!d) return;
+    var rows = [
+      ['Worker 服务', true, '可访问（本页已成功加载）'],
+      ['KV 存储绑定', d.kvOk, d.kvOk ? '正常，消息可存取' : (d.kvError || '未绑定，请在 Settings → Variables → KV Namespace Bindings 添加 NOTIFICATIONS')],
+      ['发送密钥 SEND_TOKEN', d.sendTokenSet, d.sendTokenSet ? '已设置，方糖地址可用' : '未设置，请先添加 Secret'],
+      ['查看密钥 READ_TOKEN', d.readTokenSet, d.readTokenSet ? '已设置，查看需验证' : '未设置，查看页公开'],
+      ['企业微信 WECOM_WEBHOOK', d.wecomWebhookSet, d.wecomWebhookSet ? '已配置，可主动推送' : '未配置，仅网页收件箱'],
+    ];
+    var allOk = true;
+    var html = '';
+    for (var i = 0; i < rows.length; i++) {
+      var label = rows[i][0], okFlag = rows[i][1], note = rows[i][2];
+      if (!okFlag && label !== '查看密钥 READ_TOKEN' && label !== '企业微信 WECOM_WEBHOOK') allOk = false;
+      var color = okFlag ? 'var(--ok)' : 'var(--danger)';
+      html += '<div style="display:flex;gap:9px;align-items:flex-start">' +
+        '<span style="color:' + color + ';font-weight:600;white-space:nowrap">' + (okFlag ? '● 正常' : '● 异常') + '</span>' +
+        '<span><b>' + esc(label) + '</b> — ' + esc(note) + '</span></div>';
+    }
+    if (!allOk) {
+      html += '<div style="margin-top:10px;padding:9px 11px;border-radius:9px;background:rgba(220,38,38,.08);font-size:12px">' +
+        '存在异常项。若访问的是 *.workers.dev 地址且打不开，多为网络原因，建议绑定自定义域名（Settings → Triggers → Custom Domains）。' +
+        '</div>';
+    }
+    $('diagBody').innerHTML = html;
+    $('btnDiag').style.display = 'inline-block';
+    if (!allOk) $('diagStrip').hidden = false;
+    $('btnDiag').addEventListener('click', function () {
+      $('diagStrip').hidden = !$('diagStrip').hidden;
+    });
+  }
+
+  function renderServerchanUrl() {
+    // 优先用轮换密钥（更安全），其次用户手填的密钥，最后浏览器保存的 SEND_TOKEN
+    var token = state.rotatingKey || $('fSendToken').value.trim() || state.sendToken;
+    var box = $('scUrl');
+    if (!token) {
+      box.textContent = '请先在「密钥与轮换」生成推送密钥，或在发送表单填入密钥，这里会生成专属地址。';
+      box.dataset.url = '';
+      $('scHint').textContent = '推荐点「生成新推送密钥」——用轮换密钥而不是 SEND_TOKEN，泄露后一键作废。';
+      return;
+    }
+    var url = location.origin + '/' + encodeURIComponent(token) + '.send?text=标题&desp=正文';
+    box.textContent = url;
+    box.dataset.url = url;
+    $('scHint').textContent = '写死 sc.ftqq.com 的软件无法改用本服务；能填「自定义 Webhook / 服务器地址」的软件可用。建议在软件里填这个轮换密钥，泄露后点「生成新推送密钥」即可让旧 key 失效。';
+  }
+
+  function renderKeyStatus(s) {
+    var text = s.rotatingKeyReady
+      ? '已生成轮换推送密钥' + (s.rotatedAt ? '（' + fmtTime(s.rotatedAt) + ' 更新）' : '') + '。软件里应填这个 key，不要填 SEND_TOKEN。'
+      : '尚未生成轮换推送密钥。填入 SEND_TOKEN 后点「生成新推送密钥」，软件用生成出的 key。';
+    $('keyStatus').textContent = text;
+  }
+
   function render() {
     var box = $('list');
     $('count').textContent = state.messages.length + ' 条';
 
     if (!state.messages.length) {
       box.innerHTML = '<div class="empty"><div class="icon">◇</div>' +
-        '<p>暂无通知。用上方表单发送一条，或调用 /send 接口。</p></div>';
+        '<p>暂无通知。用左侧表单发送一条，或调用 /send 接口。</p></div>';
       return;
     }
 
     var html = '';
     for (var i = 0; i < state.messages.length; i++) {
       var m = state.messages[i];
-      html += '<div class="msg">' +
-        '<div class="m-head"><span class="m-title">' + esc(m.title || '（无标题）') + '</span>' +
-        '<span class="m-time">' + esc(fmtTime(m.timestamp)) + '</span></div>' +
+      var id = String(m.id || i);
+      var open = state.allExpanded || Boolean(state.expanded[id]);
+      html += '<div class="msg' + (open ? ' open' : '') + '" data-id="' + esc(id) + '">' +
+        '<div class="msg-head" role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+        '<span class="msg-chevron">▶</span>' +
+        '<div class="msg-main">' +
+        '<div class="msg-row">' +
+        '<span class="m-title">' + esc(m.title || '（无标题）') + '</span>' +
+        (m.source ? '<span class="m-source">' + esc(m.source) + '</span>' : '') +
+        '<span class="m-time">' + esc(fmtTime(m.timestamp)) + '</span>' +
+        '</div>' +
+        '<div class="m-preview">' + esc(previewOf(m.content)) + '</div>' +
+        '</div>' +
+        '<span class="m-hint">展开</span>' +
+        '</div>' +
+        '<div class="msg-detail">' +
         (m.content ? '<div class="m-body">' + esc(m.content) + '</div>' : '') +
-        '<div class="m-meta">来源：' + esc(m.source || 'api') + ' · ID：' + esc(m.id) + '</div>' +
-        '</div>';
+        '<div class="m-meta">来源：' + esc(m.source || 'api') + ' · ID：' + esc(id) + '</div>' +
+        '</div></div>';
     }
     box.innerHTML = html;
+    $('btnToggleAll').textContent = state.allExpanded ? '全部折叠' : '全部展开';
+  }
+
+  function toggleMessage(id) {
+    if (state.allExpanded) {
+      // 从"全部展开"状态下单独折叠某条：先固化每条为展开，再翻转目标
+      for (var k = 0; k < state.messages.length; k++) state.expanded[String(state.messages[k].id || k)] = true;
+      state.allExpanded = false;
+      state.expanded[id] = false;
+    } else {
+      state.expanded[id] = !state.expanded[id];
+    }
+    render();
   }
 
   function loadMessages() {
@@ -313,7 +537,6 @@
       (state.version ? '&version=' + encodeURIComponent(state.version) : '');
     return api(url).then(function (data) {
       state.version = data.version || state.version;
-      // 版本号未变化：服务端未读取全量列表，前端保留现有内容即可
       if (!data.unchanged) {
         state.messages = data.messages || [];
         render();
@@ -326,18 +549,25 @@
   }
 
   function init() {
-    fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
+    fetch('/api/status', { credentials: 'same-origin' }).then(function (r) {
+      if (r.status === 401) { requireReauth(); throw new Error('unauthorized'); }
+      return r.json();
+    }).then(function (s) {
       state.status = s;
-      if (s.needReadToken && !state.readToken) {
-        showLogin();
-        return;
-      }
-      if (s.needReadToken) $('btnLogout').style.display = 'inline-block';
+      $('btnLogout').style.display = 'inline-block';
       $('sendHint').textContent = s.needSendToken
         ? '服务端已启用发送密钥，请输入 SEND_TOKEN。'
         : '服务端未设置发送密钥，可直接发送（建议线上设置）。';
+      $('wecomHint').textContent = s.wecomConfigured
+        ? '企业微信推送：已开启，新消息会同步推到群。'
+        : '企业微信推送：未配置（在 Worker Secrets 设置 WECOM_WEBHOOK 即可开启）。';
+      $('btnTestWecom').disabled = !s.wecomConfigured;
+      renderDiagnostics(s);
+      renderKeyStatus(s);
+      renderServerchanUrl();
       start();
     }).catch(function (err) {
+      if (err.message === 'unauthorized') return;
       setStatus('error', '无法获取服务状态');
     });
   }
@@ -350,27 +580,60 @@
     }, REFRESH_MS);
   }
 
-  // ---- 事件绑定 ----
+  // 事件委托：点标题行展开/折叠（不用 inline onclick，便于严格 CSP）
+  $('list').addEventListener('click', function (e) {
+    var head = e.target.closest && e.target.closest('.msg-head');
+    if (!head) return;
+    var card = head.parentNode;
+    if (card && card.dataset && card.dataset.id) toggleMessage(card.dataset.id);
+  });
+  $('list').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var head = e.target.closest && e.target.closest('.msg-head');
+    if (!head) return;
+    e.preventDefault();
+    var card = head.parentNode;
+    if (card && card.dataset && card.dataset.id) toggleMessage(card.dataset.id);
+  });
+
+  $('btnToggleAll').addEventListener('click', function () {
+    state.allExpanded = !state.allExpanded;
+    state.expanded = {};
+    render();
+  });
+
   $('btnRefresh').addEventListener('click', function () {
     loadMessages().then(function () { toast('已刷新'); });
   });
 
   $('btnLogin').addEventListener('click', function () {
-    state.readToken = $('loginToken').value.trim();
-    localStorage.setItem('cfn_read_token', state.readToken);
-    $('loginOverlay').classList.add('hidden');
-    $('btnLogout').style.display = 'inline-block';
-    init();
+    var btn = this;
+    var token = $('loginToken').value.trim();
+    if (!token) { $('loginErr').textContent = '请输入查看密钥'; $('loginErr').classList.add('show'); return; }
+    btn.disabled = true;
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token }),
+      credentials: 'same-origin'
+    }).then(function (r) {
+      return r.json().then(function (d) { return { s: r.status, d: d }; });
+    }).then(function (res) {
+      if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
+      location.reload();
+    }).catch(function (err) {
+      $('loginErr').textContent = '验证失败：' + err.message;
+      $('loginErr').classList.add('show');
+    }).finally(function () { btn.disabled = false; });
   });
   $('loginToken').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') $('btnLogin').click();
   });
 
   $('btnLogout').addEventListener('click', function () {
-    state.readToken = '';
-    localStorage.removeItem('cfn_read_token');
-    $('btnLogout').style.display = 'none';
-    location.reload();
+    fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).then(function () {
+      location.reload();
+    });
   });
 
   $('btnSend').addEventListener('click', function () {
@@ -384,13 +647,15 @@
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      credentials: 'same-origin'
     }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
       .then(function (res) {
         if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
         if (token) {
           state.sendToken = token;
           localStorage.setItem('cfn_send_token', token);
+          renderServerchanUrl();
         }
         $('fTitle').value = '';
         $('fContent').value = '';
@@ -412,16 +677,104 @@
   });
 
   $('btnCopyCurl').addEventListener('click', function () {
-    var token = $('fSendToken').value.trim() || state.sendToken || '<YOUR_SEND_TOKEN>';
+    var token = state.rotatingKey || $('fSendToken').value.trim() || state.sendToken || '<YOUR_KEY>';
     var title = $('fTitle').value.trim() || '测试标题';
     var content = $('fContent').value.trim() || '测试内容';
-    var cmd = 'curl "' + location.origin + '/send?token=' + encodeURIComponent(token) +
-      '&title=' + encodeURIComponent(title) + '&content=' + encodeURIComponent(content) + '"';
+    // 用 Header 传密钥：密钥不进 URL，不会留在浏览器历史/日志/Referer 中
+    var cmd = 'curl -X POST "' + location.origin + '/api/send" \\n' +
+      '  -H "Content-Type: application/json" \\n' +
+      '  -H "X-Token: ' + token + '" \\n' +
+      "  -d '" + JSON.stringify({ title: title, content: content }) + "'";
     var box = $('curlBox');
     box.textContent = cmd;
     box.style.display = 'block';
-    if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(function () { toast('已复制 curl'); });
+    if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(function () { toast('已复制 curl（密钥走 Header，更安全）'); });
     else toast('已生成，请手动复制');
+  });
+
+  $('fSendToken').addEventListener('input', renderServerchanUrl);
+  $('scUrl').addEventListener('click', function () {
+    var url = this.dataset.url;
+    if (url && navigator.clipboard) navigator.clipboard.writeText(url).then(function () { toast('已复制推送地址'); });
+  });
+  $('btnCopyScUrl').addEventListener('click', function () {
+    var box = $('scUrl');
+    var url = box.dataset.url;
+    if (!url) { toast('请先填入 SEND_TOKEN'); return; }
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { toast('已复制推送地址'); });
+    else { box.textContent = url; toast('请手动复制'); }
+  });
+
+  $('btnTestWecom').addEventListener('click', function () {
+    var btn = this;
+    var token = $('fSendToken').value.trim() || state.sendToken;
+    btn.disabled = true;
+    var url = '/api/test-wecom' + (token ? '?token=' + encodeURIComponent(token) : '');
+    fetch(url, { method: 'POST', credentials: 'same-origin' }).then(function (r) {
+      return r.json().then(function (d) { return { s: r.status, d: d }; });
+    }).then(function (res) {
+      if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
+      toast('测试成功，请查看企业微信群');
+    }).catch(function (err) {
+      toast('测试失败：' + err.message);
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  });
+
+  function showRotatedKey(key, isNew) {
+    state.rotatingKey = key;
+    var box = $('rotatedKeyBox');
+    box.textContent = key;
+    box.dataset.key = key;
+    box.style.display = 'block';
+    $('rotateHint').textContent = isNew
+      ? '新密钥已生效，旧密钥立即失效。请到软件里替换成这个新 key。点密钥框可复制。'
+      : '这是当前生效的推送密钥。点密钥框可复制；轮换后此 key 失效。';
+    renderServerchanUrl();
+  }
+
+  function adminHeaders() {
+    var m = $('fMasterToken').value.trim();
+    if (!m) { toast('请先填入管理主密钥 SEND_TOKEN'); return null; }
+    return { 'Content-Type': 'application/json', 'X-Token': m };
+  }
+
+  $('btnRotateKey').addEventListener('click', function () {
+    var btn = this;
+    var headers = adminHeaders();
+    if (!headers) return;
+    btn.disabled = true;
+    fetch('/api/key/rotate', { method: 'POST', headers: headers, credentials: 'same-origin' }).then(function (r) {
+      return r.json().then(function (d) { return { s: r.status, d: d }; });
+    }).then(function (res) {
+      if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
+      showRotatedKey(res.d.key, true);
+      toast('新推送密钥已生成，旧 key 已失效');
+    }).catch(function (err) {
+      toast('轮换失败：' + err.message);
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  $('btnViewKey').addEventListener('click', function () {
+    var btn = this;
+    var m = $('fMasterToken').value.trim();
+    if (!m) { toast('请先填入管理主密钥 SEND_TOKEN'); return; }
+    btn.disabled = true;
+    fetch('/api/key/current', { headers: { 'X-Token': m }, credentials: 'same-origin' }).then(function (r) {
+      return r.json().then(function (d) { return { s: r.status, d: d }; });
+    }).then(function (res) {
+      if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
+      if (!res.d.key) { toast('尚未生成轮换密钥，请先点「生成新推送密钥」'); return; }
+      showRotatedKey(res.d.key, false);
+    }).catch(function (err) {
+      toast('查看失败：' + err.message);
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  $('rotatedKeyBox').addEventListener('click', function () {
+    var key = this.dataset.key;
+    if (key && navigator.clipboard) navigator.clipboard.writeText(key).then(function () { toast('已复制推送密钥'); });
   });
 
   init();

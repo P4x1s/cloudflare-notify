@@ -13,10 +13,13 @@
 | URL 发消息 | `GET /send?token=...&title=...&content=...`，浏览器、curl、快捷指令、Webhook 都能用 |
 | API 发消息 | `POST /api/send`，支持 JSON 与表单，兼容方糖的 `title` / `desp` 字段 |
 | 即时查看 | Web 页面每 5 秒自动轮询，无需手动刷新 |
-| 通知折叠 | 通知默认折叠只显示标题，点击展开正文；支持全部展开/折叠 |
+| 通知折叠 | 折叠时显示**标题 + 内容摘要**（两行），不用展开也能读到正文；点击展开看全文，支持全部展开/折叠 |
+| 统一面板布局 | 整页一个外框，内部用发丝线分区，不再是四张各自浮起的卡片 |
 | 密钥分层与轮换 | `SEND_TOKEN` 为管理主密钥（只用于后台轮换），另有可一键随机生成的**轮换推送密钥**填给软件；换后旧密钥立即失效 |
 | 三种安全传参 | 密钥可放 Header（`X-Token` / `Authorization: Bearer`）、POST body 或 URL，避免密钥进入 URL 历史与日志 |
 | 双密钥 | `SEND_TOKEN` 控制发送/管理，`READ_TOKEN` 控制查看/清空；留空即公开 |
+| **服务端鉴权页面** | 配置 `READ_TOKEN` 后，未验证的请求**只会拿到最小登录页**——里面根本没有推送地址与密钥 DOM，删掉任何遮罩也看不到 |
+| **HttpOnly 会话 Cookie** | 验证通过签发 HMAC 签名的会话 Cookie（7 天），密钥不落 localStorage，JS/XSS 都读不到；改 `READ_TOKEN` 会让旧会话立即失效 |
 | 自定义域名 | Cloudflare 控制台一键绑定，自动签发证书 |
 | 安全响应头 | 已设 CSP、nosniff、Referrer-Policy、X-Frame-Options、Permissions-Policy；CORS 默认收紧为同源 |
 
@@ -26,15 +29,20 @@
 
 ```
 cloudflare-notify/
-├── src/
-│   ├── index.js        # Worker 入口：路由、鉴权、请求解析
-│   ├── messages.js     # KV 存储层：写入、列表、清空、计数
-│   ├── utils.js        # 响应封装、CORS、Token 提取
-│   └── ui.html         # 通知查看页面（内嵌进 Worker，无外部静态资源）
-├── wrangler.toml       # Cloudflare Workers 配置
-├── package.json        # 依赖与脚本
-├── .dev.vars.example   # 本地环境变量模板
+├── worker.js            # ★ 单文件版（推荐部署）：路由 + KV + 内嵌 UI + 鉴权，一个文件全包
+├── _worker.js           # 与 worker.js 完全相同（Pages advanced mode 入口，备用）
+├── src/                 # 历史多文件实现，仅作参考，不参与部署
+│   ├── index.js         # Worker 入口：路由、鉴权、请求解析
+│   ├── messages.js      # KV 存储层：写入、列表、清空、计数
+│   ├── utils.js         # 响应封装、安全响应头、Token 提取、会话 Cookie
+│   └── ui.html          # 通知查看页面（内嵌进 Worker，无外部静态资源）
+├── examples/            # 通用发送脚本（Python，零依赖）
+├── wrangler.toml        # Cloudflare Workers 配置
+├── package.json         # 依赖与脚本
+├── .dev.vars.example    # 本地环境变量模板
 ├── .gitignore
+├── GITHUB_DEPLOY.md     # 从 GitHub 导入的完整部署教程
+├── TROUBLESHOOTING.md   # 常见问题排查
 └── README.md
 ```
 
@@ -48,8 +56,10 @@ cloudflare-notify/
 
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
-| `GET` | `/` | 无（页面内再校验 READ_TOKEN） | 通知查看页面 |
-| `GET` | `/api/status` | 无 | 服务状态与是否启用密钥 |
+| `GET` | `/` | `READ_TOKEN` 或会话 Cookie（**服务端鉴权**） | 通知查看页面。未验证时只返回最小登录页，不含任何密钥/地址 DOM |
+| `POST` | `/api/login` | 请求体 `{"token":"<READ_TOKEN>"}` | 验证通过签发 HttpOnly 会话 Cookie；失败次数过多返回 429 |
+| `POST` | `/api/logout` | 无 | 清除会话 Cookie |
+| `GET` | `/api/status` | `READ_TOKEN` 或会话 Cookie | 服务状态与是否启用密钥 |
 | `GET` | `/send` | 轮换密钥或 SEND_TOKEN | **通过 URL 发送消息（最简方式）** |
 | `POST` | `/send` | 轮换密钥或 SEND_TOKEN | 表单发送消息 |
 | `POST` | `/api/send` | 轮换密钥或 SEND_TOKEN | JSON / 表单发送消息（密钥可放 Header/body/query） |
@@ -57,9 +67,17 @@ cloudflare-notify/
 | `POST` | `/api/key/rotate` | **仅** SEND_TOKEN（管理主密钥） | 生成新轮换密钥并写入 KV，旧密钥立即失效；返回 `{ key }` |
 | `GET` | `/api/key/current` | **仅** SEND_TOKEN | 查看当前轮换密钥 |
 | `POST` | `/api/test-wecom` | 轮换密钥或 SEND_TOKEN | 测试企业微信 Webhook 连通性 |
-| `GET` | `/api/messages?limit=50&version=...` | READ_TOKEN | 获取通知列表；带 `version` 且无变化时只返回 `unchanged` |
-| `GET` | `/api/count` | READ_TOKEN | 通知总数 |
-| `POST` | `/api/clear` | READ_TOKEN | 清空全部通知 |
+| `GET` | `/api/messages?limit=50&version=...` | `READ_TOKEN` 或会话 Cookie | 获取通知列表；带 `version` 且无变化时只返回 `unchanged` |
+| `GET` | `/api/count` | `READ_TOKEN` 或会话 Cookie | 通知总数 |
+| `POST` | `/api/clear` | `READ_TOKEN` 或会话 Cookie | 清空全部通知 |
+
+> **会话 Cookie 机制（v1.4.0）**：配置 `READ_TOKEN` 后，页面访问与只读 API 需要凭据。登录流程是
+> `POST /api/login {"token":"<READ_TOKEN>"}` → 服务端校验通过后下发 `Set-Cookie: cfn_session=...`
+> （HMAC-SHA256 签名、HttpOnly、SameSite=Strict、7 天有效）。后续请求浏览器自动带上该 Cookie。
+>
+> - 密钥**不写进 localStorage**，JS 读不到，XSS 也偷不走；
+> - Cookie 签名用的是 `READ_TOKEN` 本身，所以**改了 `READ_TOKEN`，所有旧会话立刻失效**；
+> - 直接访问 `/?token=<READ_TOKEN>` 也能进入：服务端会换发 Cookie 并 **302 到不带 token 的干净地址**，避免密钥留在浏览器历史里。
 | `OPTIONS` | 任意 | 无 | CORS 预检 |
 
 ### 3.2 发送消息
@@ -163,10 +181,24 @@ curl "https://你的域名/api/key/current" -H "X-Token: <SEND_TOKEN>"
 | `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'` | 防点击劫持 |
 | `Permissions-Policy` | 禁用摄像头/麦克风/定位/支付等无关能力 |
 | CORS 默认同源 | 移除旧版 `Access-Control-Allow-Origin: *`，跨站脚本无法读取 API；同源页面、curl、服务端 Webhook 不受影响 |
-| 错误脱敏 | 内部异常只写 console、对客户端返回通用错误；公开的 `/api/status` 不回传底层异常原文 |
+| 错误脱敏 | 内部异常只写 console、对客户端返回通用错误；`/api/status` 同样需要鉴权，不回传底层异常原文 |
 | 输出转义 | 所有通知字段经 HTML 实体转义后渲染，折叠交互用事件委托而非内联 `onclick` |
 
+**v1.4.0 新增的访问控制加固**：
+
+| 措施 | 作用 |
+| --- | --- |
+| **服务端鉴权下发页面** | 配置 `READ_TOKEN` 后，未验证的请求**只返回最小登录页**。推送地址、密钥、通知列表这些 DOM 在未鉴权响应里**根本不存在**——用开发者工具删掉任何遮罩 div 也拿不到（v1.3 的遮罩只是纯前端显示，删掉即可见，属于真实漏洞） |
+| **HttpOnly 会话 Cookie** | 验证通过签发 HMAC-SHA256 签名的 `cfn_session` Cookie（HttpOnly / SameSite=Strict / 7 天）。密钥不落 localStorage，JS 与 XSS 都读不到 |
+| **签名可失效** | 会话签名密钥就是 `READ_TOKEN`，改 `READ_TOKEN` 等于一键踢掉所有旧会话 |
+| **常量时间比较** | 密钥比对用 `timingSafeEqual`，避免时序侧信道逐字节猜密钥 |
+| **登录限速** | 同一 IP 5 分钟内失败 8 次即锁 5 分钟，返回 429（Worker 内尽力而为；正式环境建议再叠一层 WAF 规则） |
+| **URL 密钥不落地** | `/?token=<READ_TOKEN>` 会被换发 Cookie 并 302 到干净地址，密钥不留在浏览器历史/Referer |
+| **会话失效即清屏** | 运行中会话过期时，前端立刻抹掉已渲染的密钥与推送地址，再要求重新验证 |
+
 > 说明：UI 是单文件内嵌（内联 `<script>`/`<style>` 是其运行前提），因此 CSP 保留了 `'unsafe-inline'`。若要进一步收紧为纯 `'self'`，需把脚本与样式拆成独立静态资源，届时将不再是单文件部署。
+
+> **边界说明**：会话 Cookie 防的是「网页被打开 / 被别人翻到」这类场景。若攻击者已经拿到了 `READ_TOKEN` 或 `SEND_TOKEN` 本身，任何前端防护都挡不住——所以密钥本身仍需妥善保管，建议用轮换密钥 + 定期轮换。
 
 ### 3.4 读取消息
 

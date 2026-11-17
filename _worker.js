@@ -11,10 +11,11 @@
  *    ⚠ 变量名必须是 NOTIFICATIONS，代码里按这个名字读取。
  * 4. Settings → Variables → Secrets → Add secret（强烈建议设置）：
  *      SEND_TOKEN = 发送密钥（调用 /send、/api/send 时必带）
- *      READ_TOKEN = 查看/清空密钥（可选；留空则查看页公开）
+ *      READ_TOKEN = 查看密钥（可选；设置后网页需登录才能看通知与接入地址）
  *      WECOM_WEBHOOK = 企业微信群机器人 Webhook 完整 URL（可选；配置后消息主动推到群）
  * 5. 保存绑定与密钥后立即生效，无需重新部署代码。
  *    访问 https://<你的worker名>.<你的子域>.workers.dev 查看通知页。
+ *    若设置了 READ_TOKEN，会先看到登录页，输入它即可进入。
  *
  * ======================== 企业微信主动推送（可选） ========================
  * 效果：每次 /send 收到消息后，Worker 立即把同一条消息推到企业微信群，手机实时收到。
@@ -45,6 +46,18 @@
  *   ③ 方糖 path 形式 /<key>.send（软件只能填 URL 时用），配合定期轮换
  * ======================================================================
  *
+ * ==================== 查看页的访问控制（v1.4，默认开启） ====================
+ * 设置了 READ_TOKEN 时，查看页与只读接口都需要凭据：
+ *   · 打开网页 → 服务端只返回**最小登录页**，里面没有推送地址、密钥、通知列表
+ *     这些 DOM。删掉任何遮罩 div 也看不到（旧版是纯前端遮罩，属真实漏洞）。
+ *   · 输入 READ_TOKEN → POST /api/login → 服务端签发 HttpOnly 会话 Cookie
+ *     （HMAC-SHA256 签名，密钥就是 READ_TOKEN，7 天有效）→ 之后自动带上。
+ *   · 密钥不落 localStorage，JS/XSS 都读不到；改 READ_TOKEN 会让旧会话立即失效。
+ *   · 直接访问 /?token=<READ_TOKEN> 也能进：服务端换发 Cookie 并 302 到干净地址。
+ *   · 同一 IP 5 分钟内登录失败 8 次会被临时锁定（429）。
+ * 未设置 READ_TOKEN 时保持零配置的公开模式（页面本身不含任何密钥）。
+ * ======================================================================
+ *
  * ====================== 方糖 / Server酱 兼容推送 ======================
  * 把「轮换推送密钥」当作你的 key（也可用 SEND_TOKEN，但不推荐放进 URL）：
  *   https://<你的域名>/<key>.send
@@ -73,19 +86,21 @@
  */
 
 // ============================== 内嵌 Web UI ==============================
-const UI_HTML = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>通知中心 · Cloudflare Notify</title>
-<style>
+// 安全模型（v1.4）：
+//   1) 页面本体由服务端鉴权——配置了 READ_TOKEN 时，未通过验证的请求只会拿到
+//      「最小登录页」，里面**不存在**任何推送地址 / 密钥 DOM，删遮罩也看不到。
+//   2) 验证通过后签发 HttpOnly 会话 Cookie（HMAC-SHA256 签名，密钥=READ_TOKEN）。
+//      Cookie 不落地 localStorage，JS 读不到，XSS 也偷不走。
+//   3) READ_TOKEN 未配置时视为公开模式，保持零配置即可用的体验。
+
+const UI_CSS = `
   :root {
     --bg: #f4f6fa;
     --card: #ffffff;
     --text: #1f2430;
     --muted: #6b7280;
     --border: #e5e7eb;
+    --line: 1px solid var(--border);
     --primary: #2563eb;
     --primary-hover: #1d4ed8;
     --danger: #dc2626;
@@ -119,11 +134,12 @@ const UI_HTML = `<!DOCTYPE html>
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 22px 64px; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 28px 20px 56px; }
 
+  /* ---------- 页头 ---------- */
   header.top {
     display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: 12px; margin-bottom: 24px;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 18px; padding: 0 2px;
   }
   .brand { display: flex; align-items: center; gap: 12px; }
   .brand .logo {
@@ -134,38 +150,49 @@ const UI_HTML = `<!DOCTYPE html>
   }
   .brand h1 { font-size: 19px; margin: 0; letter-spacing: .2px; }
   .brand .sub { font-size: 12px; color: var(--muted); }
-  .status {
-    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
-  }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
   .dot.live { background: var(--ok); box-shadow: 0 0 0 3px rgba(22,163,74,.15); }
   .dot.error { background: var(--danger); }
 
-  .grid { display: grid; grid-template-columns: 300px 300px 1fr; gap: 20px; align-items: start; }
-  @media (max-width: 1080px) { .grid { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
-
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 16px; box-shadow: var(--shadow); padding: 22px;
-    transition: transform .18s ease, box-shadow .18s ease;
+  /* ---------- 统一面板：整页一个外框，内部只用发丝线分区 ---------- */
+  .panel {
+    background: var(--card); border: var(--line);
+    border-radius: 16px; box-shadow: var(--shadow); overflow: hidden;
   }
-  .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.10), 0 14px 34px rgba(0,0,0,.06); }
-  .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 650; letter-spacing: .2px; }
+  .panel-cols { display: grid; grid-template-columns: 344px minmax(0, 1fr); }
+  .panel-side { border-right: var(--line); min-width: 0; }
+  .panel-main { min-width: 0; }
+  @media (max-width: 980px) {
+    .panel-cols { grid-template-columns: 1fr; }
+    .panel-side { border-right: none; border-bottom: var(--line); }
+  }
 
-  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+  .section { padding: 22px 24px; }
+  .section + .section { border-top: var(--line); }
+  .section h2 { margin: 0 0 4px; font-size: 14px; font-weight: 650; letter-spacing: .2px; }
+  .sec-desc { font-size: 12px; color: var(--muted); margin: 0 0 14px; line-height: 1.65; }
+
+  /* ---------- 表单 ---------- */
+  label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 5px; }
   label:first-of-type { margin-top: 0; }
   input, textarea {
     width: 100%; padding: 9px 11px; border-radius: 9px;
-    border: 1px solid var(--border); background: transparent; color: var(--text);
+    border: var(--line); background: transparent; color: var(--text);
     font: inherit; font-size: 13px; outline: none; transition: border-color .15s;
   }
   input:focus, textarea:focus { border-color: var(--primary); }
-  textarea { min-height: 96px; resize: vertical; }
-  .hint { font-size: 11px; color: var(--muted); margin-top: 5px; word-break: break-all; }
+  textarea { min-height: 92px; resize: vertical; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.6; word-break: break-word; }
+  .hint.box {
+    padding: 9px 11px; border: var(--line); border-radius: 9px;
+    font-size: 12px; color: var(--text);
+  }
+  .hint.box.dashed { border-style: dashed; cursor: pointer; }
+  .hint.box.ok { border-color: var(--ok); color: var(--ok); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
   button {
-    font: inherit; cursor: pointer; border-radius: 9px; border: 1px solid var(--border);
+    font: inherit; cursor: pointer; border-radius: 9px; border: var(--line);
     background: var(--card); color: var(--text); padding: 8px 13px; font-size: 13px;
     transition: background .15s, border-color .15s, opacity .15s;
   }
@@ -175,37 +202,45 @@ const UI_HTML = `<!DOCTYPE html>
   button.ghost { background: transparent; }
   button.danger { color: var(--danger); }
   button:disabled { opacity: .5; cursor: not-allowed; }
-  .row { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
 
+  /* ---------- 自检条 ---------- */
+  .diag-strip { border-bottom: var(--line); background: rgba(79,140,255,.05); }
+  .diag-strip[hidden] { display: none; }
+  .diag-inner { padding: 16px 24px; font-size: 13px; line-height: 1.9; }
+
+  /* ---------- 通知列表 ---------- */
   .list-head {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
+    gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
   }
-  .list-head h2 { margin: 0; }
-  .list-actions { display: flex; gap: 8px; align-items: center; }
+  .list-head h2 { margin: 0 0 0; }
+  .list-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .count { font-size: 12px; color: var(--muted); }
 
   .msg {
-    border: 1px solid var(--border); border-radius: 11px;
-    margin-bottom: 9px; background: var(--bg); overflow: hidden;
+    border: var(--line); border-radius: 11px;
+    margin-bottom: 8px; background: var(--bg); overflow: hidden;
     transition: border-color .15s, box-shadow .15s;
   }
   .msg:hover { border-color: var(--primary); }
   .msg.open { box-shadow: 0 2px 10px rgba(0,0,0,.05); }
   .msg-head {
-    display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+    display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px;
     cursor: pointer; user-select: none;
   }
   .msg-head:hover { background: rgba(79,140,255,.05); }
+  .msg-head:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
   .msg-chevron {
-    flex: none; color: var(--muted); font-size: 12px; line-height: 1;
+    flex: none; color: var(--muted); font-size: 11px; line-height: 1.7;
     transition: transform .18s ease;
   }
   .msg.open .msg-chevron { transform: rotate(90deg); color: var(--primary); }
+  .msg-main { flex: 1 1 auto; min-width: 0; }
+  .msg-row { display: flex; align-items: baseline; gap: 8px; }
   .msg .m-title {
-    flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px;
-    word-break: break-word; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap;
+    flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px; line-height: 1.5;
+    word-break: break-word; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .msg .m-time { font-size: 11px; color: var(--muted); white-space: nowrap; flex: none; }
   .msg .m-source {
@@ -213,18 +248,31 @@ const UI_HTML = `<!DOCTYPE html>
     background: rgba(79,140,255,.12); color: var(--primary);
     max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .msg-detail { padding: 0 14px 13px 34px; }
+  /* 折叠态的正文摘要：两行 clamp——不展开也能读到内容 */
+  .msg .m-preview {
+    margin-top: 2px; font-size: 12.5px; line-height: 1.55; color: var(--muted);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; word-break: break-word;
+  }
+  .msg .m-preview:empty { display: none; }
+  .msg.open .m-preview { display: none; }
+  .msg .m-hint {
+    flex: none; font-size: 11px; color: var(--muted); margin-top: 2px;
+    opacity: 0; transition: opacity .15s;
+  }
+  .msg:hover .m-hint, .msg-head:focus-visible .m-hint { opacity: .8; }
+  .msg.open .m-hint { display: none; }
+  .msg-detail { padding: 0 14px 12px 35px; }
   .msg:not(.open) .msg-detail { display: none; }
   .msg .m-body {
     font-size: 13px; color: var(--text); white-space: pre-wrap;
-    word-break: break-word; opacity: .9;
-    border-top: 1px solid var(--border); padding-top: 10px;
-    max-height: 360px; overflow-y: auto;
+    word-break: break-word; border-top: var(--line); padding-top: 10px;
+    max-height: 380px; overflow-y: auto;
   }
   .msg .m-meta { margin-top: 8px; font-size: 11px; color: var(--muted); }
   .toggle-all { font-size: 12px; padding: 5px 10px; }
 
-  .empty { text-align: center; padding: 48px 12px; color: var(--muted); }
+  .empty { text-align: center; padding: 44px 12px; color: var(--muted); }
   .empty .icon { font-size: 34px; opacity: .5; }
   .empty p { margin: 8px 0 0; font-size: 13px; }
 
@@ -240,8 +288,38 @@ const UI_HTML = `<!DOCTYPE html>
     display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 40;
   }
   .overlay.hidden { display: none; }
-  .login { width: 100%; max-width: 360px; }
-</style>
+  .login-box {
+    width: 100%; max-width: 360px; background: var(--card);
+    border: var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 24px;
+  }
+  .login-box h2 { margin: 0 0 6px; font-size: 16px; }
+
+  /* ---------- 独立登录页 ---------- */
+  .auth-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .auth-card {
+    width: 100%; max-width: 380px; background: var(--card);
+    border: var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 30px 28px;
+  }
+  .auth-card .brand { margin-bottom: 20px; }
+  .auth-card h1 { font-size: 18px; margin: 0 0 6px; }
+  .auth-card .sub { font-size: 12px; color: var(--muted); }
+  .auth-card .lead { font-size: 13px; color: var(--muted); margin: 0 0 18px; line-height: 1.7; }
+  .auth-err {
+    display: none; margin-top: 12px; padding: 9px 11px; border-radius: 9px;
+    background: rgba(220,38,38,.10); color: var(--danger); font-size: 12px;
+  }
+  .auth-err.show { display: block; }
+`;
+
+const UI_HTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>通知中心 · Cloudflare Notify</title>
+<style>${UI_CSS}</style>
 </head>
 <body>
 <div class="wrap">
@@ -256,91 +334,98 @@ const UI_HTML = `<!DOCTYPE html>
     <div class="status">
       <span class="dot" id="dot"></span>
       <span id="statusText">正在连接…</span>
+      <button class="ghost" id="btnDiag" style="display:none">配置自检</button>
       <button class="ghost" id="btnLogout" style="display:none">退出</button>
     </div>
   </header>
 
-  <div id="diagCard" class="card" style="margin-bottom:20px;display:none">
-    <h2>配置自检</h2>
-    <div id="diagBody" style="font-size:13px;line-height:1.9"></div>
-  </div>
+  <div class="panel">
+    <div class="diag-strip" id="diagStrip" hidden>
+      <div class="diag-inner" id="diagBody"></div>
+    </div>
 
-  <div class="grid">
-    <section class="card">
-      <h2>密钥管理与轮换</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
-        两级密钥：<b>管理主密钥 SEND_TOKEN</b> 只用于后台轮换，绝不要填进软件或 URL；<b>轮换推送密钥</b> 才是填进软件的那个，随时可换、换后旧的立即失效。
-      </p>
-      <label for="fMasterToken">管理主密钥（SEND_TOKEN）</label>
-      <input id="fMasterToken" type="password" placeholder="仅用于生成/查看轮换密钥" />
-      <div class="hint" id="keyStatus">当前轮换密钥状态加载中…</div>
-      <div class="row">
-        <button class="primary" id="btnRotateKey">生成新推送密钥</button>
-        <button class="ghost" id="btnViewKey">查看当前密钥</button>
-      </div>
-      <div class="hint" id="rotatedKeyBox" style="display:none;padding:9px 11px;border:1px solid var(--ok);border-radius:9px;word-break:break-all;cursor:pointer"></div>
-      <div class="hint" id="rotateHint" style="margin-top:8px"></div>
-    </section>
+    <div class="panel-cols">
+      <div class="panel-side">
+        <section class="section">
+          <h2>推送接入</h2>
+          <p class="sec-desc">
+            把下面这段地址填进任何支持「自定义 Webhook / Server酱 / 方糖」的软件，即可推送到企业微信。
+            key 优先使用<b>轮换推送密钥</b>（泄露后可一键作废）。
+          </p>
+          <div class="hint box dashed" id="scUrl"></div>
+          <div class="row">
+            <button class="ghost" id="btnCopyScUrl">复制推送地址</button>
+          </div>
+          <div class="hint" id="scHint"></div>
+        </section>
 
-    <section class="card">
-      <h2>方糖风格推送地址</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
-        把下面这个地址填到任何支持「自定义 Webhook / Server酱 / 方糖」的软件里，即可推送到企业微信。key 优先使用上面的<b>轮换推送密钥</b>（更安全）。
-      </p>
-      <div class="hint" id="scUrl" style="padding:9px 11px;border:1px dashed var(--border);border-radius:9px;word-break:break-all;cursor:pointer"></div>
-      <div class="row">
-        <button class="ghost" id="btnCopyScUrl">复制推送地址</button>
-      </div>
-      <div class="hint" id="scHint"></div>
-    </section>
+        <section class="section">
+          <h2>密钥与轮换</h2>
+          <p class="sec-desc">
+            两级密钥：<b>管理主密钥 SEND_TOKEN</b> 只用于后台管理，绝不要填进软件或 URL；
+            <b>轮换推送密钥</b> 才是填进软件的那个，随时可换、换后旧的立即失效。
+          </p>
+          <label for="fMasterToken">管理主密钥（SEND_TOKEN）</label>
+          <input id="fMasterToken" type="password" placeholder="仅用于生成 / 查看轮换密钥" autocomplete="off" />
+          <div class="hint" id="keyStatus">当前轮换密钥状态加载中…</div>
+          <div class="row">
+            <button class="primary" id="btnRotateKey">生成新推送密钥</button>
+            <button class="ghost" id="btnViewKey">查看当前密钥</button>
+          </div>
+          <div class="hint box ok" id="rotatedKeyBox" style="display:none"></div>
+          <div class="hint" id="rotateHint"></div>
+        </section>
 
-    <section class="card">
-      <h2>发送测试通知</h2>
-      <label for="fTitle">标题</label>
-      <input id="fTitle" placeholder="例如：构建完成" />
-      <label for="fContent">内容</label>
-      <textarea id="fContent" placeholder="在这里输入通知正文…"></textarea>
-      <label for="fSendToken">发送密钥（SEND_TOKEN）</label>
-      <input id="fSendToken" type="password" placeholder="留空则使用浏览器保存的值" />
-      <div class="hint" id="sendHint">密钥仅保存在本机浏览器，不会上传到第三方。</div>
-      <div class="hint" id="wecomHint"></div>
-      <div class="row">
-        <button class="primary" id="btnSend">发送通知</button>
-        <button class="ghost" id="btnCopyCurl">复制 curl 示例</button>
-        <button class="ghost" id="btnTestWecom">测试企微推送</button>
+        <section class="section">
+          <h2>发送测试通知</h2>
+          <label for="fTitle">标题</label>
+          <input id="fTitle" placeholder="例如：构建完成" autocomplete="off" />
+          <label for="fContent">内容</label>
+          <textarea id="fContent" placeholder="在这里输入通知正文…"></textarea>
+          <label for="fSendToken">发送密钥（SEND_TOKEN）</label>
+          <input id="fSendToken" type="password" placeholder="留空则使用浏览器保存的值" autocomplete="off" />
+          <div class="hint" id="sendHint">密钥仅保存在本机浏览器，不会上传到第三方。</div>
+          <div class="hint" id="wecomHint"></div>
+          <div class="row">
+            <button class="primary" id="btnSend">发送通知</button>
+            <button class="ghost" id="btnCopyCurl">复制 curl 示例</button>
+            <button class="ghost" id="btnTestWecom">测试企微推送</button>
+          </div>
+          <div class="hint box" id="curlBox" style="display:none"></div>
+        </section>
       </div>
-      <div class="hint" id="curlBox" style="display:none"></div>
-    </section>
 
-    <section class="card">
-      <div class="list-head">
-        <h2>最近通知</h2>
-        <div class="list-actions">
-          <span class="count" id="count"></span>
-          <button class="ghost toggle-all" id="btnToggleAll">全部展开</button>
-          <button class="ghost" id="btnRefresh">刷新</button>
-          <button class="ghost danger" id="btnClear">清空</button>
-        </div>
+      <div class="panel-main">
+        <section class="section">
+          <div class="list-head">
+            <h2>最近通知</h2>
+            <div class="list-actions">
+              <span class="count" id="count"></span>
+              <button class="ghost toggle-all" id="btnToggleAll">全部展开</button>
+              <button class="ghost" id="btnRefresh">刷新</button>
+              <button class="ghost danger" id="btnClear">清空</button>
+            </div>
+          </div>
+          <div class="hint" style="margin:0 0 12px">折叠时显示标题与内容摘要，点击标题行展开全文。</div>
+          <div id="list">
+            <div class="empty"><div class="icon">◇</div><p>加载中…</p></div>
+          </div>
+        </section>
       </div>
-      <div class="hint" style="margin:0 0 10px">点标题行展开/折叠，默认只显示标题；新消息自动收起。</div>
-      <div id="list">
-        <div class="empty"><div class="icon">◇</div><p>加载中…</p></div>
-      </div>
-    </section>
+    </div>
   </div>
 </div>
 
 <div class="overlay hidden" id="loginOverlay">
-  <div class="card login">
-    <h2>访问验证</h2>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">
-      该通知服务启用了查看密钥，请输入 READ_TOKEN 继续。
-    </p>
-    <label for="loginToken">查看密钥</label>
-    <input id="loginToken" type="password" placeholder="READ_TOKEN" />
+  <div class="login-box">
+    <h2>会话已失效</h2>
+    <p class="sec-desc">为安全起见，页面中的密钥与推送地址已清空。请重新验证以继续。</p>
+    <label for="loginToken">查看密钥（READ_TOKEN）</label>
+    <input id="loginToken" type="password" placeholder="READ_TOKEN" autocomplete="current-password" />
     <div class="row">
-      <button class="primary" id="btnLogin">进入</button>
+      <button class="primary" id="btnLogin">重新验证</button>
     </div>
+    <div class="auth-err" id="loginErr"></div>
   </div>
 </div>
 
@@ -353,7 +438,6 @@ const UI_HTML = `<!DOCTYPE html>
   var REFRESH_MS = 5000;
   var state = {
     status: null,
-    readToken: localStorage.getItem('cfn_read_token') || '',
     sendToken: localStorage.getItem('cfn_send_token') || '',
     rotatingKey: '',
     messages: [],
@@ -387,18 +471,18 @@ const UI_HTML = `<!DOCTYPE html>
   function api(path, options) {
     options = options || {};
     var headers = options.headers || {};
-    if (state.readToken) headers['X-Token'] = state.readToken;
     if (options.body && !headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
     return fetch(path, {
       method: options.method || 'GET',
       headers: headers,
-      body: options.body
+      body: options.body,
+      credentials: 'same-origin'
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (res.status === 401) {
-          showLogin();
+          requireReauth();
           throw new Error('unauthorized');
         }
         if (!res.ok || data.ok === false) {
@@ -409,17 +493,35 @@ const UI_HTML = `<!DOCTYPE html>
     });
   }
 
-  function showLogin() {
+  // 会话失效：立刻抹掉页面里已渲染的敏感信息，再要求重新验证
+  function wipeSensitive() {
+    state.rotatingKey = '';
+    var sc = $('scUrl');
+    if (sc) { sc.textContent = ''; sc.dataset.url = ''; }
+    var rk = $('rotatedKeyBox');
+    if (rk) { rk.textContent = ''; rk.dataset.key = ''; rk.style.display = 'none'; }
+    var sh = $('scHint');
+    if (sh) sh.textContent = '';
+  }
+
+  function requireReauth() {
     clearInterval(state.timer);
+    wipeSensitive();
     $('loginOverlay').classList.remove('hidden');
     $('btnLogout').style.display = 'none';
-    setStatus('error', '需要验证');
+    setStatus('error', '需要重新验证');
   }
 
   function fmtTime(ts) {
     try {
       return new Date(ts).toLocaleString('zh-CN', { hour12: false });
     } catch (e) { return String(ts); }
+  }
+
+  function previewOf(content) {
+    var s = String(content || '').replace(/\\s+/g, ' ').trim();
+    if (!s) return '';
+    return s.length > 140 ? s.slice(0, 140) + '…' : s;
   }
 
   function renderDiagnostics(s) {
@@ -448,7 +550,11 @@ const UI_HTML = `<!DOCTYPE html>
         '</div>';
     }
     $('diagBody').innerHTML = html;
-    $('diagCard').style.display = 'block';
+    $('btnDiag').style.display = 'inline-block';
+    if (!allOk) $('diagStrip').hidden = false;
+    $('btnDiag').addEventListener('click', function () {
+      $('diagStrip').hidden = !$('diagStrip').hidden;
+    });
   }
 
   function renderServerchanUrl() {
@@ -456,7 +562,8 @@ const UI_HTML = `<!DOCTYPE html>
     var token = state.rotatingKey || $('fSendToken').value.trim() || state.sendToken;
     var box = $('scUrl');
     if (!token) {
-      box.textContent = '请先在「密钥管理与轮换」生成推送密钥，或在发送表单填入密钥，这里会生成专属地址。';
+      box.textContent = '请先在「密钥与轮换」生成推送密钥，或在发送表单填入密钥，这里会生成专属地址。';
+      box.dataset.url = '';
       $('scHint').textContent = '推荐点「生成新推送密钥」——用轮换密钥而不是 SEND_TOKEN，泄露后一键作废。';
       return;
     }
@@ -469,7 +576,7 @@ const UI_HTML = `<!DOCTYPE html>
   function renderKeyStatus(s) {
     var text = s.rotatingKeyReady
       ? '已生成轮换推送密钥' + (s.rotatedAt ? '（' + fmtTime(s.rotatedAt) + ' 更新）' : '') + '。软件里应填这个 key，不要填 SEND_TOKEN。'
-      : '尚未生成轮换推送密钥。填入 SEND_TOKEN 后点「生成新推送密钥」，Software 用生成出的 key。';
+      : '尚未生成轮换推送密钥。填入 SEND_TOKEN 后点「生成新推送密钥」，软件用生成出的 key。';
     $('keyStatus').textContent = text;
   }
 
@@ -479,7 +586,7 @@ const UI_HTML = `<!DOCTYPE html>
 
     if (!state.messages.length) {
       box.innerHTML = '<div class="empty"><div class="icon">◇</div>' +
-        '<p>暂无通知。用上方表单发送一条，或调用 /send 接口。</p></div>';
+        '<p>暂无通知。用左侧表单发送一条，或调用 /send 接口。</p></div>';
       return;
     }
 
@@ -491,9 +598,16 @@ const UI_HTML = `<!DOCTYPE html>
       html += '<div class="msg' + (open ? ' open' : '') + '" data-id="' + esc(id) + '">' +
         '<div class="msg-head" role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '">' +
         '<span class="msg-chevron">▶</span>' +
+        '<div class="msg-main">' +
+        '<div class="msg-row">' +
         '<span class="m-title">' + esc(m.title || '（无标题）') + '</span>' +
         (m.source ? '<span class="m-source">' + esc(m.source) + '</span>' : '') +
-        '<span class="m-time">' + esc(fmtTime(m.timestamp)) + '</span></div>' +
+        '<span class="m-time">' + esc(fmtTime(m.timestamp)) + '</span>' +
+        '</div>' +
+        '<div class="m-preview">' + esc(previewOf(m.content)) + '</div>' +
+        '</div>' +
+        '<span class="m-hint">展开</span>' +
+        '</div>' +
         '<div class="msg-detail">' +
         (m.content ? '<div class="m-body">' + esc(m.content) + '</div>' : '') +
         '<div class="m-meta">来源：' + esc(m.source || 'api') + ' · ID：' + esc(id) + '</div>' +
@@ -532,13 +646,12 @@ const UI_HTML = `<!DOCTYPE html>
   }
 
   function init() {
-    fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
+    fetch('/api/status', { credentials: 'same-origin' }).then(function (r) {
+      if (r.status === 401) { requireReauth(); throw new Error('unauthorized'); }
+      return r.json();
+    }).then(function (s) {
       state.status = s;
-      if (s.needReadToken && !state.readToken) {
-        showLogin();
-        return;
-      }
-      if (s.needReadToken) $('btnLogout').style.display = 'inline-block';
+      $('btnLogout').style.display = 'inline-block';
       $('sendHint').textContent = s.needSendToken
         ? '服务端已启用发送密钥，请输入 SEND_TOKEN。'
         : '服务端未设置发送密钥，可直接发送（建议线上设置）。';
@@ -551,6 +664,7 @@ const UI_HTML = `<!DOCTYPE html>
       renderServerchanUrl();
       start();
     }).catch(function (err) {
+      if (err.message === 'unauthorized') return;
       setStatus('error', '无法获取服务状态');
     });
   }
@@ -590,21 +704,33 @@ const UI_HTML = `<!DOCTYPE html>
   });
 
   $('btnLogin').addEventListener('click', function () {
-    state.readToken = $('loginToken').value.trim();
-    localStorage.setItem('cfn_read_token', state.readToken);
-    $('loginOverlay').classList.add('hidden');
-    $('btnLogout').style.display = 'inline-block';
-    init();
+    var btn = this;
+    var token = $('loginToken').value.trim();
+    if (!token) { $('loginErr').textContent = '请输入查看密钥'; $('loginErr').classList.add('show'); return; }
+    btn.disabled = true;
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token }),
+      credentials: 'same-origin'
+    }).then(function (r) {
+      return r.json().then(function (d) { return { s: r.status, d: d }; });
+    }).then(function (res) {
+      if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
+      location.reload();
+    }).catch(function (err) {
+      $('loginErr').textContent = '验证失败：' + err.message;
+      $('loginErr').classList.add('show');
+    }).finally(function () { btn.disabled = false; });
   });
   $('loginToken').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') $('btnLogin').click();
   });
 
   $('btnLogout').addEventListener('click', function () {
-    state.readToken = '';
-    localStorage.removeItem('cfn_read_token');
-    $('btnLogout').style.display = 'none';
-    location.reload();
+    fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).then(function () {
+      location.reload();
+    });
   });
 
   $('btnSend').addEventListener('click', function () {
@@ -618,7 +744,8 @@ const UI_HTML = `<!DOCTYPE html>
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      credentials: 'same-origin'
     }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
       .then(function (res) {
         if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
@@ -680,7 +807,7 @@ const UI_HTML = `<!DOCTYPE html>
     var token = $('fSendToken').value.trim() || state.sendToken;
     btn.disabled = true;
     var url = '/api/test-wecom' + (token ? '?token=' + encodeURIComponent(token) : '');
-    fetch(url, { method: 'POST' }).then(function (r) {
+    fetch(url, { method: 'POST', credentials: 'same-origin' }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
     }).then(function (res) {
       if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
@@ -715,7 +842,7 @@ const UI_HTML = `<!DOCTYPE html>
     var headers = adminHeaders();
     if (!headers) return;
     btn.disabled = true;
-    fetch('/api/key/rotate', { method: 'POST', headers: headers }).then(function (r) {
+    fetch('/api/key/rotate', { method: 'POST', headers: headers, credentials: 'same-origin' }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
     }).then(function (res) {
       if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
@@ -731,7 +858,7 @@ const UI_HTML = `<!DOCTYPE html>
     var m = $('fMasterToken').value.trim();
     if (!m) { toast('请先填入管理主密钥 SEND_TOKEN'); return; }
     btn.disabled = true;
-    fetch('/api/key/current', { headers: { 'X-Token': m } }).then(function (r) {
+    fetch('/api/key/current', { headers: { 'X-Token': m }, credentials: 'same-origin' }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
     }).then(function (res) {
       if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
@@ -748,6 +875,87 @@ const UI_HTML = `<!DOCTYPE html>
   });
 
   init();
+})();
+</script>
+</body>
+</html>`;
+
+// 未通过服务端鉴权时返回的最小登录页：
+// 里面**没有**任何推送地址、密钥、通知列表等敏感 DOM，
+// 即便攻击者删掉遮罩 div 也拿不到任何信息。
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>访问验证 · Cloudflare Notify</title>
+<style>${UI_CSS}</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand">
+      <div class="logo">✦</div>
+      <div>
+        <h1>通知中心</h1>
+        <div class="sub">Cloudflare Notify</div>
+      </div>
+    </div>
+    <p class="lead">该通知服务已开启查看验证。请输入查看密钥（READ_TOKEN）以查看通知与接入地址。</p>
+    <label for="loginToken">查看密钥</label>
+    <input id="loginToken" type="password" placeholder="READ_TOKEN" autocomplete="current-password" />
+    <div class="row">
+      <button class="primary" id="btnLogin">进入通知中心</button>
+    </div>
+    <div class="auth-err" id="loginErr"></div>
+    <div class="hint" style="margin-top:14px">验证通过后会签发 HttpOnly 会话 Cookie，密钥不会保存在浏览器本地。</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  $('btnLogin').addEventListener('click', function () {
+    var btn = this;
+    var token = $('loginToken').value.trim();
+    if (!token) {
+      $('loginErr').textContent = '请输入查看密钥';
+      $('loginErr').classList.add('show');
+      return;
+    }
+    btn.disabled = true;
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token }),
+      credentials: 'same-origin'
+    }).then(function (r) {
+      return r.json().then(function (d) { return { s: r.status, d: d }; });
+    }).then(function (res) {
+      if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
+      location.replace('/');
+    }).catch(function (err) {
+      $('loginErr').textContent = '验证失败：' + err.message;
+      $('loginErr').classList.add('show');
+      btn.disabled = false;
+    });
+  });
+
+  $('loginToken').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') $('btnLogin').click();
+  });
+  $('loginToken').focus();
 })();
 </script>
 </body>
@@ -786,6 +994,144 @@ const HTML_CSP = [
   "form-action 'self'",
 ].join('; ');
 
+// ============================== 会话与鉴权 ==============================
+// 会话 Cookie 用 READ_TOKEN 作 HMAC 密钥签名（无状态，不需要 KV）。
+// 好处：密钥不落在 localStorage / JS 变量里，HttpOnly 让 XSS 也读不到；
+// 改 READ_TOKEN 会让所有旧会话立刻失效。
+const SESSION_COOKIE = 'cfn_session';
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
+
+/** 常量时间字符串比较，避免时序侧信道泄露密钥 */
+function timingSafeEqual(a, b) {
+  const sa = a == null ? '' : String(a);
+  const sb = b == null ? '' : String(b);
+  const la = sa.length;
+  const lb = sb.length;
+  let diff = la ^ lb;
+  const len = Math.max(la, lb);
+  for (let i = 0; i < len; i++) {
+    const ca = i < la ? sa.charCodeAt(i) : 0;
+    const cb = i < lb ? sb.charCodeAt(i) : 0;
+    diff |= ca ^ cb;
+  }
+  return diff === 0;
+}
+
+/** HMAC-SHA256(secret, message) → 十六进制 */
+async function hmacHex(secret, message) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(String(secret)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(String(message)));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function base64url(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** 生成会话令牌：<过期毫秒>.<随机数>.<HMAC签名> */
+async function createSessionToken(env) {
+  const exp = Date.now() + SESSION_TTL_MS;
+  const nonce = base64url(crypto.getRandomValues(new Uint8Array(12)));
+  const payload = `${exp}.${nonce}`;
+  const sig = await hmacHex(env.READ_TOKEN, payload);
+  return `${payload}.${sig}`;
+}
+
+/** 校验会话令牌：格式、有效期、签名三者都要过 */
+async function verifySessionToken(env, token) {
+  if (!token || !env.READ_TOKEN) return false;
+  const parts = String(token).split('.');
+  if (parts.length !== 3) return false;
+  const exp = Number(parts[0]);
+  if (!Number.isFinite(exp) || exp < Date.now()) return false;
+  const payload = `${parts[0]}.${parts[1]}`;
+  const sig = await hmacHex(env.READ_TOKEN, payload);
+  return timingSafeEqual(sig, parts[2]);
+}
+
+/** 从 Cookie 头取指定值 */
+function getCookie(request, name) {
+  const raw = request.headers.get('Cookie') || '';
+  const parts = raw.split(';');
+  for (const p of parts) {
+    const idx = p.indexOf('=');
+    if (idx < 0) continue;
+    if (p.slice(0, idx).trim() === name) {
+      try {
+        return decodeURIComponent(p.slice(idx + 1).trim());
+      } catch (e) {
+        return '';
+      }
+    }
+  }
+  return '';
+}
+
+function sessionCookieHeader(token, secure) {
+  const attrs = [
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    'Path=/',
+    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+    'HttpOnly',
+    'SameSite=Strict',
+  ];
+  if (secure) attrs.push('Secure');
+  return attrs.join('; ');
+}
+
+function clearSessionCookieHeader(secure) {
+  const attrs = [`${SESSION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'HttpOnly', 'SameSite=Strict'];
+  if (secure) attrs.push('Secure');
+  return attrs.join('; ');
+}
+
+/** 登录失败限速：单 isolate 内按 IP 计数（尽力而为，生产环境建议再加 WAF 规则） */
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 5 * 60 * 1000;
+const LOGIN_MAX_FAILS = 8;
+
+function loginBlocked(ip) {
+  const rec = loginAttempts.get(ip);
+  if (!rec) return false;
+  if (Date.now() - rec.first > LOGIN_WINDOW_MS) {
+    loginAttempts.delete(ip);
+    return false;
+  }
+  return rec.count >= LOGIN_MAX_FAILS;
+}
+
+function noteLoginFailure(ip) {
+  const rec = loginAttempts.get(ip);
+  if (!rec || Date.now() - rec.first > LOGIN_WINDOW_MS) {
+    loginAttempts.set(ip, { first: Date.now(), count: 1 });
+    return;
+  }
+  rec.count += 1;
+}
+
+function clearLoginFailures(ip) {
+  loginAttempts.delete(ip);
+}
+
+function clientIp(request) {
+  return (
+    request.headers.get('CF-Connecting-IP') ||
+    request.headers.get('X-Forwarded-For') ||
+    'unknown'
+  );
+}
+
 function json(data, status = 200, extraHeaders = {}, env) {
   return new Response(JSON.stringify(data), {
     status,
@@ -798,7 +1144,7 @@ function json(data, status = 200, extraHeaders = {}, env) {
   });
 }
 
-function html(body, status = 200) {
+function html(body, status = 200, extraHeaders = {}) {
   return new Response(body, {
     status,
     headers: {
@@ -806,6 +1152,7 @@ function html(body, status = 200) {
       'Cache-Control': 'no-store',
       'Content-Security-Policy': HTML_CSP,
       ...SECURITY_HEADERS,
+      ...extraHeaders,
     },
   });
 }
@@ -829,11 +1176,18 @@ function extractToken(request, url, body) {
   return null;
 }
 
-/** 读取/校验查看密钥。未配置时视为公开访问。 */
-function hasReadPermission(request, url, env) {
+/**
+ * 读取/校验查看密钥。未配置时视为公开访问。
+ * 接受三种凭据：READ_TOKEN 直传（query/Header/body）、已签发的会话 Cookie。
+ */
+async function hasReadPermission(request, url, env) {
   const expected = env.READ_TOKEN;
   if (!expected) return true;
-  return extractToken(request, url) === expected;
+  const direct = extractToken(request, url);
+  if (direct && timingSafeEqual(direct, expected)) return true;
+  const session = getCookie(request, SESSION_COOKIE);
+  if (session && (await verifySessionToken(env, session))) return true;
+  return false;
 }
 
 /**
@@ -846,14 +1200,16 @@ async function hasSendPermission(request, url, env, body) {
   const current = await getCurrentSendKey(env);
   if (!master && !current) return true;
   if (!token) return false;
-  return token === master || (Boolean(current) && token === current);
+  if (master && timingSafeEqual(token, master)) return true;
+  return Boolean(current) && timingSafeEqual(token, current);
 }
 
 /** 管理操作鉴权：只认管理主密钥 SEND_TOKEN，轮换密钥无权调用 */
 function hasAdminPermission(request, url, env, body) {
   const master = String(env.SEND_TOKEN || '').trim();
   if (!master) return false;
-  return extractToken(request, url, body) === master;
+  const token = extractToken(request, url, body);
+  return Boolean(token) && timingSafeEqual(token, master);
 }
 
 function generateId() {
@@ -1034,7 +1390,8 @@ async function createMessage(env, data) {
   });
   // 主动推送到企业微信（best-effort：失败不影响消息入库与 API 成功响应）
   const wecom = await pushToWecom(env, message);
-  return json({ ok: true, code: 0, message: '通知已接收', data: message, wecom });
+  // 双返回码：errno（方糖）+ code（Server酱³），两种客户端都能判定成功
+  return json({ ok: true, code: 0, errno: 0, message: '通知已接收', data: message, wecom });
 }
 
 /**
@@ -1076,7 +1433,7 @@ async function serverchanSend(env, key, data) {
   });
 }
 
-const VERSION = '1.3.1';
+const VERSION = '1.4.0';
 
 export default {
   async fetch(request, env) {
@@ -1089,13 +1446,76 @@ export default {
     }
 
     try {
-      // 查看页面
+      // ---- 登录 / 退出（会话 Cookie）----
+      if (path === '/api/login' && method === 'POST') {
+        const ip = clientIp(request);
+        if (loginBlocked(ip)) {
+          return json({ ok: false, error: '尝试次数过多，请稍后再试' }, 429);
+        }
+        const body = await parseBody(request);
+        const provided = String(body.token || body.readToken || '').trim();
+        const expected = String(env.READ_TOKEN || '').trim();
+        if (!expected) {
+          // 未配置 READ_TOKEN：无需登录，直接放行
+          return json({ ok: true, message: '未启用查看验证' }, 200);
+        }
+        if (!provided || !timingSafeEqual(provided, expected)) {
+          noteLoginFailure(ip);
+          return json({ ok: false, error: '密钥不正确' }, 401);
+        }
+        clearLoginFailures(ip);
+        const session = await createSessionToken(env);
+        return json(
+          { ok: true, message: '验证通过' },
+          200,
+          { 'Set-Cookie': sessionCookieHeader(session, url.protocol === 'https:') }
+        );
+      }
+
+      if (path === '/api/logout' && method === 'POST') {
+        return json(
+          { ok: true },
+          200,
+          { 'Set-Cookie': clearSessionCookieHeader(url.protocol === 'https:') }
+        );
+      }
+
+      // ---- 查看页面（服务端鉴权后才下发完整 UI）----
       if (path === '/' || path === '/index.html') {
-        return html(UI_HTML);
+        const expected = String(env.READ_TOKEN || '').trim();
+        if (!expected) {
+          // 公开模式：未配置 READ_TOKEN，直接返回完整页面
+          return html(UI_HTML);
+        }
+        const session = getCookie(request, SESSION_COOKIE);
+        if (session && (await verifySessionToken(env, session))) {
+          return html(UI_HTML);
+        }
+        // 兼容：URL / Header 直接带 READ_TOKEN → 立刻换成会话 Cookie 并 302 到干净地址，
+        // 这样密钥不会长期留在浏览器历史、地址栏和 Referer 里。
+        const direct = extractToken(request, url);
+        if (direct && timingSafeEqual(direct, expected)) {
+          const token = await createSessionToken(env);
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location: path === '/index.html' ? '/' : path,
+              'Set-Cookie': sessionCookieHeader(token, url.protocol === 'https:'),
+              'Cache-Control': 'no-store',
+              ...SECURITY_HEADERS,
+            },
+          });
+        }
+        // 未鉴权：只返回最小登录页，不含任何密钥/地址/通知数据
+        return html(LOGIN_HTML, 401);
       }
 
       // 服务状态 + 配置自检（用于排查"页面打不开 / 功能异常"）
       if (path === '/api/status' && method === 'GET') {
+        // 配置了 READ_TOKEN 时，状态接口同样需要鉴权，避免泄露配置细节
+        if (!(await hasReadPermission(request, url, env))) {
+          return json({ ok: false, error: 'unauthorized' }, 401);
+        }
         let kvOk = false;
         let kvError = '';
         try {
@@ -1158,7 +1578,7 @@ export default {
 
       // 读取通知（增量检查）
       if (path === '/api/messages' && method === 'GET') {
-        if (!hasReadPermission(request, url, env)) {
+        if (!(await hasReadPermission(request, url, env))) {
           return json({ ok: false, error: 'unauthorized' }, 401);
         }
         const version = await getVersion(env);
@@ -1217,7 +1637,7 @@ export default {
 
       // 清空
       if (path === '/api/clear' && method === 'POST') {
-        if (!hasReadPermission(request, url, env)) {
+        if (!(await hasReadPermission(request, url, env))) {
           return json({ ok: false, error: 'unauthorized' }, 401);
         }
         return json({ ok: true, deleted: await clearMessages(env) });
@@ -1225,7 +1645,7 @@ export default {
 
       // 统计
       if (path === '/api/count' && method === 'GET') {
-        if (!hasReadPermission(request, url, env)) {
+        if (!(await hasReadPermission(request, url, env))) {
           return json({ ok: false, error: 'unauthorized' }, 401);
         }
         return json({ ok: true, total: await countMessages(env) });
