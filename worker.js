@@ -112,11 +112,14 @@ const UI_HTML = `<!DOCTYPE html>
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
                  "Microsoft YaHei", sans-serif;
     background: var(--bg);
+    background-image: radial-gradient(1000px 500px at 12% -8%, rgba(79,140,255,.10), transparent 60%),
+                      radial-gradient(800px 400px at 100% 0%, rgba(124,58,237,.08), transparent 55%);
+    background-attachment: fixed;
     color: var(--text);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 22px 64px; }
 
   header.top {
     display: flex; align-items: center; justify-content: space-between;
@@ -144,9 +147,11 @@ const UI_HTML = `<!DOCTYPE html>
 
   .card {
     background: var(--card); border: 1px solid var(--border);
-    border-radius: 14px; box-shadow: var(--shadow); padding: 20px;
+    border-radius: 16px; box-shadow: var(--shadow); padding: 22px;
+    transition: transform .18s ease, box-shadow .18s ease;
   }
-  .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.10), 0 14px 34px rgba(0,0,0,.06); }
+  .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 650; letter-spacing: .2px; }
 
   label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
   label:first-of-type { margin-top: 0; }
@@ -181,18 +186,43 @@ const UI_HTML = `<!DOCTYPE html>
   .count { font-size: 12px; color: var(--muted); }
 
   .msg {
-    border: 1px solid var(--border); border-radius: 11px; padding: 13px 15px;
-    margin-bottom: 10px; background: var(--bg); transition: border-color .15s;
+    border: 1px solid var(--border); border-radius: 11px;
+    margin-bottom: 9px; background: var(--bg); overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
   }
   .msg:hover { border-color: var(--primary); }
-  .msg .m-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-  .msg .m-title { font-weight: 600; font-size: 14px; word-break: break-word; }
-  .msg .m-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .msg.open { box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+  .msg-head {
+    display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+    cursor: pointer; user-select: none;
+  }
+  .msg-head:hover { background: rgba(79,140,255,.05); }
+  .msg-chevron {
+    flex: none; color: var(--muted); font-size: 12px; line-height: 1;
+    transition: transform .18s ease;
+  }
+  .msg.open .msg-chevron { transform: rotate(90deg); color: var(--primary); }
+  .msg .m-title {
+    flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px;
+    word-break: break-word; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .msg .m-time { font-size: 11px; color: var(--muted); white-space: nowrap; flex: none; }
+  .msg .m-source {
+    font-size: 10px; padding: 1px 7px; border-radius: 999px; flex: none;
+    background: rgba(79,140,255,.12); color: var(--primary);
+    max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .msg-detail { padding: 0 14px 13px 34px; }
+  .msg:not(.open) .msg-detail { display: none; }
   .msg .m-body {
-    margin-top: 7px; font-size: 13px; color: var(--text);
-    white-space: pre-wrap; word-break: break-word; opacity: .9;
+    font-size: 13px; color: var(--text); white-space: pre-wrap;
+    word-break: break-word; opacity: .9;
+    border-top: 1px solid var(--border); padding-top: 10px;
+    max-height: 360px; overflow-y: auto;
   }
   .msg .m-meta { margin-top: 8px; font-size: 11px; color: var(--muted); }
+  .toggle-all { font-size: 12px; padding: 5px 10px; }
 
   .empty { text-align: center; padding: 48px 12px; color: var(--muted); }
   .empty .icon { font-size: 34px; opacity: .5; }
@@ -287,10 +317,12 @@ const UI_HTML = `<!DOCTYPE html>
         <h2>最近通知</h2>
         <div class="list-actions">
           <span class="count" id="count"></span>
+          <button class="ghost toggle-all" id="btnToggleAll">全部展开</button>
           <button class="ghost" id="btnRefresh">刷新</button>
           <button class="ghost danger" id="btnClear">清空</button>
         </div>
       </div>
+      <div class="hint" style="margin:0 0 10px">点标题行展开/折叠，默认只显示标题；新消息自动收起。</div>
       <div id="list">
         <div class="empty"><div class="icon">◇</div><p>加载中…</p></div>
       </div>
@@ -325,6 +357,8 @@ const UI_HTML = `<!DOCTYPE html>
     sendToken: localStorage.getItem('cfn_send_token') || '',
     rotatingKey: '',
     messages: [],
+    expanded: {},
+    allExpanded: false,
     version: '',
     timer: null
   };
@@ -452,14 +486,33 @@ const UI_HTML = `<!DOCTYPE html>
     var html = '';
     for (var i = 0; i < state.messages.length; i++) {
       var m = state.messages[i];
-      html += '<div class="msg">' +
-        '<div class="m-head"><span class="m-title">' + esc(m.title || '（无标题）') + '</span>' +
+      var id = String(m.id || i);
+      var open = state.allExpanded || Boolean(state.expanded[id]);
+      html += '<div class="msg' + (open ? ' open' : '') + '" data-id="' + esc(id) + '">' +
+        '<div class="msg-head" role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+        '<span class="msg-chevron">▶</span>' +
+        '<span class="m-title">' + esc(m.title || '（无标题）') + '</span>' +
+        (m.source ? '<span class="m-source">' + esc(m.source) + '</span>' : '') +
         '<span class="m-time">' + esc(fmtTime(m.timestamp)) + '</span></div>' +
+        '<div class="msg-detail">' +
         (m.content ? '<div class="m-body">' + esc(m.content) + '</div>' : '') +
-        '<div class="m-meta">来源：' + esc(m.source || 'api') + ' · ID：' + esc(m.id) + '</div>' +
-        '</div>';
+        '<div class="m-meta">来源：' + esc(m.source || 'api') + ' · ID：' + esc(id) + '</div>' +
+        '</div></div>';
     }
     box.innerHTML = html;
+    $('btnToggleAll').textContent = state.allExpanded ? '全部折叠' : '全部展开';
+  }
+
+  function toggleMessage(id) {
+    if (state.allExpanded) {
+      // 从"全部展开"状态下单独折叠某条：先固化每条为展开，再翻转目标
+      for (var k = 0; k < state.messages.length; k++) state.expanded[String(state.messages[k].id || k)] = true;
+      state.allExpanded = false;
+      state.expanded[id] = false;
+    } else {
+      state.expanded[id] = !state.expanded[id];
+    }
+    render();
   }
 
   function loadMessages() {
@@ -509,6 +562,28 @@ const UI_HTML = `<!DOCTYPE html>
       if (!document.hidden) loadMessages();
     }, REFRESH_MS);
   }
+
+  // 事件委托：点标题行展开/折叠（不用 inline onclick，便于严格 CSP）
+  $('list').addEventListener('click', function (e) {
+    var head = e.target.closest && e.target.closest('.msg-head');
+    if (!head) return;
+    var card = head.parentNode;
+    if (card && card.dataset && card.dataset.id) toggleMessage(card.dataset.id);
+  });
+  $('list').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var head = e.target.closest && e.target.closest('.msg-head');
+    if (!head) return;
+    e.preventDefault();
+    var card = head.parentNode;
+    if (card && card.dataset && card.dataset.id) toggleMessage(card.dataset.id);
+  });
+
+  $('btnToggleAll').addEventListener('click', function () {
+    state.allExpanded = !state.allExpanded;
+    state.expanded = {};
+    render();
+  });
 
   $('btnRefresh').addEventListener('click', function () {
     loadMessages().then(function () { toast('已刷新'); });
@@ -679,20 +754,45 @@ const UI_HTML = `<!DOCTYPE html>
 </html>`;
 
 // ============================== 工具函数 ==============================
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
+// CORS 默认收紧：不设置 Access-Control-Allow-Origin，跨站浏览器脚本无法读取响应。
+// 同源页面、curl、服务端 Webhook 调用均不受影响（它们不依赖 CORS）。
+// 这是有意的收窄——旧版用 '*' 允许任意站点读取 API，已移除。
+const CORS_PREFLIGHT_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Token',
   'Access-Control-Max-Age': '86400',
 };
 
-function json(data, status = 200, extraHeaders = {}) {
+// 统一的安全响应头（纵深防御）
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+};
+
+// UI 为单文件内嵌（内联 script/style 是它运行的前提），CSP 收紧到 self + unsafe-inline。
+// 若移除 unsafe-inline，需要把脚本与样式拆成独立静态资源，届时不再是单文件。
+const HTML_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "font-src 'self' data:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join('; ');
+
+function json(data, status = 200, extraHeaders = {}, env) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
-      ...CORS_HEADERS,
+      ...SECURITY_HEADERS,
       ...extraHeaders,
     },
   });
@@ -704,7 +804,8 @@ function html(body, status = 200) {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
-      ...CORS_HEADERS,
+      'Content-Security-Policy': HTML_CSP,
+      ...SECURITY_HEADERS,
     },
   });
 }
@@ -975,7 +1076,7 @@ async function serverchanSend(env, key, data) {
   });
 }
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 
 export default {
   async fetch(request, env) {
@@ -984,7 +1085,7 @@ export default {
     const method = request.method;
 
     if (method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
     }
 
     try {
@@ -1001,7 +1102,8 @@ export default {
           await env.NOTIFICATIONS.list({ limit: 1 });
           kvOk = true;
         } catch (e) {
-          kvError = (e && e.message) ? e.message : 'KV 不可用';
+          // 脱敏：只返回归类后的提示，不暴露底层异常原文（该端点无需鉴权）。
+          kvError = 'KV 绑定不可用，请检查 NOTIFICATIONS 绑定';
         }
         const rotatingKey = await getCurrentSendKey(env);
         const rotatedAt = kvOk ? String((await env.NOTIFICATIONS.get(ROTATED_AT_KEY)) || '') : '';
@@ -1145,8 +1247,11 @@ export default {
 
       return json({ ok: false, error: 'not found' }, 404);
     } catch (err) {
+      // 不向客户端暴露内部异常细节（可能含 KV 结构/配置敏感信息）。
+      // 详细堆栈写入 console，可在 Cloudflare Dashboard → Workers → Logs 查看。
+      console.error('[notify] unhandled error:', err && err.stack ? err.stack : err);
       return json(
-        { ok: false, error: err && err.message ? err.message : 'internal error' },
+        { ok: false, error: 'internal server error' },
         500
       );
     }

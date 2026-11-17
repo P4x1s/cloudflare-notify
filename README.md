@@ -13,11 +13,12 @@
 | URL 发消息 | `GET /send?token=...&title=...&content=...`，浏览器、curl、快捷指令、Webhook 都能用 |
 | API 发消息 | `POST /api/send`，支持 JSON 与表单，兼容方糖的 `title` / `desp` 字段 |
 | 即时查看 | Web 页面每 5 秒自动轮询，无需手动刷新 |
+| 通知折叠 | 通知默认折叠只显示标题，点击展开正文；支持全部展开/折叠 |
 | 密钥分层与轮换 | `SEND_TOKEN` 为管理主密钥（只用于后台轮换），另有可一键随机生成的**轮换推送密钥**填给软件；换后旧密钥立即失效 |
 | 三种安全传参 | 密钥可放 Header（`X-Token` / `Authorization: Bearer`）、POST body 或 URL，避免密钥进入 URL 历史与日志 |
 | 双密钥 | `SEND_TOKEN` 控制发送/管理，`READ_TOKEN` 控制查看/清空；留空即公开 |
 | 自定义域名 | Cloudflare 控制台一键绑定，自动签发证书 |
-| 跨域支持 | 已配置 CORS，可被任意来源的脚本调用 |
+| 安全响应头 | 已设 CSP、nosniff、Referrer-Policy、X-Frame-Options、Permissions-Policy；CORS 默认收紧为同源 |
 
 ---
 
@@ -151,6 +152,21 @@ curl "https://你的域名/api/key/current" -H "X-Token: <SEND_TOKEN>"
 6. **控制查看权限**：设置 `READ_TOKEN`，避免任何人都能读取全部通知内容。
 
 > 仍有边界需要说明：只要软件只能填 URL（方糖类），key 就必然出现在那一条 URL 里，无法做到"密钥完全不进 URL"。能做的上限是「用可随时作废的轮换密钥 + 定期轮换」，把泄露窗口压到最小；签名/HMAC 这类防重放机制对只支持填 URL 的软件无能为力，故本 Demo 未引入。
+
+**平台侧纵深防御（v1.3.1 起，无需配置，已内置）**：
+
+| 措施 | 作用 |
+| --- | --- |
+| `Content-Security-Policy` | 限制脚本/样式来源为 self + 内联、禁止外部资源与 iframe 嵌套，缓解 XSS 数据外带 |
+| `X-Content-Type-Options: nosniff` | 禁止 MIME 嗅探，防类型混淆攻击 |
+| `Referrer-Policy: no-referrer` | 页面不向外站发送来源信息 |
+| `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'` | 防点击劫持 |
+| `Permissions-Policy` | 禁用摄像头/麦克风/定位/支付等无关能力 |
+| CORS 默认同源 | 移除旧版 `Access-Control-Allow-Origin: *`，跨站脚本无法读取 API；同源页面、curl、服务端 Webhook 不受影响 |
+| 错误脱敏 | 内部异常只写 console、对客户端返回通用错误；公开的 `/api/status` 不回传底层异常原文 |
+| 输出转义 | 所有通知字段经 HTML 实体转义后渲染，折叠交互用事件委托而非内联 `onclick` |
+
+> 说明：UI 是单文件内嵌（内联 `<script>`/`<style>` 是其运行前提），因此 CSP 保留了 `'unsafe-inline'`。若要进一步收紧为纯 `'self'`，需把脚本与样式拆成独立静态资源，届时将不再是单文件部署。
 
 ### 3.4 读取消息
 
