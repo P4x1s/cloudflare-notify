@@ -1,0 +1,34 @@
+#: Cloudflare Workers 配置（GitHub 导入专用版）
+#: 完整文档：https://developers.cloudflare.com/workers/wrangler/configuration/
+
+#: 项目名称，同时决定默认 workers.dev 子域名前缀（若被占用 Cloudflare 会自动加后缀）
+name = "cloudflare-notify"
+
+#: Worker 入口文件（单文件版，全部逻辑与页面都在这一个文件里）
+main = "worker.js"
+
+#: 兼容性日期，固定 API 行为
+compatibility_date = "2026-11-16"
+
+#: 非敏感变量（密钥请到 Dashboard → Settings → Variables → Secrets 设置）
+[vars]
+APP_NAME = "Cloudflare Notify"
+
+#: ─────────────────────────────────────────────────────────────
+#: KV 命名空间说明（重要）
+#: 为了让「从 GitHub 导入 → 一次部署成功 → 页面能打开」，这里刻意
+#: 不写 KV 绑定。KV 的 ID 是每人账户独有的占位符，若把假 ID 写进来，
+#: 部署会直接失败（这也是页面打不开的常见原因之一）。
+#:
+#: 正确做法：部署成功后，到 Dashboard → 该 Worker → Settings →
+#: Bindings → Add → KV Namespace，变量名填 NOTIFICATIONS。详见
+#: GITHUB_DEPLOY.md 第 4 节。
+#:
+#: 如果你希望把绑定写进本文件（可选，便于版本管理），先创建 KV 拿到
+#: ID，再取消下面这段注释并替换成你自己的 ID：
+#:
+#: [[kv_namespaces]]
+#: binding = "NOTIFICATIONS"
+#: id = "你的_namespace_ID"
+#: preview_id = "你的_preview_ID"
+#: ─────────────────────────────────────────────────────────────

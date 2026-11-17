@@ -1,0 +1,16 @@
+# 本地开发用的环境变量示例
+# 用法：复制本文件为 .dev.vars，按需要修改（.dev.vars 已被 .gitignore 忽略）
+
+# 发送消息所需密钥。调用 /send 或 /api/send 时必须提供。
+# 建议设置得长一些，例如用密码生成器生成 32 位随机字符串。
+SEND_TOKEN=dev-send-token-please-change-me
+
+# 查看 / 清空消息所需密钥。留空 = 查看页面完全公开。
+# 若在同一网络中共享，建议也设置一个独立密钥。
+READ_TOKEN=
+
+# 企业微信群机器人 Webhook 完整 URL（可选）。
+# 配置后每条新通知会主动推到企业微信群；留空则只有网页收件箱。
+# 获取方式：企业微信 App → 群聊 → 右上角「…」→ 群机器人 → 添加 → 复制 Webhook 地址。
+# 线上部署时请改用 Dashboard → Settings → Variables → Secrets 设置同名变量，不要写进代码。
+WECOM_WEBHOOK=
