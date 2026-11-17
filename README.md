@@ -111,7 +111,7 @@ cloudflare-notify/
 > - 直接访问 `/?token=<READ_TOKEN>` 也能进入：服务端会换发 Cookie 并 **302 到不带 token 的干净地址**，避免密钥留在浏览器历史里。
 >
 > **Turnstile 人机验证（v1.5.0，可选）**：启用后 `/api/login` 还需携带 `turnstileToken`（前端组件产出，服务端 Siteverify 校验）。
-> 校验顺序是「先 Turnstile → 再比对 `READ_TOKEN`」，无法绕过；校验失败返回 401 且**不透露具体错误码**。详见 [4.3](#43-turnstile-人机验证可选-v150-起)。
+> 校验顺序是「先 Turnstile → 再比对 `READ_TOKEN`」，无法绕过；校验失败返回 401 且**不透露具体错误码**。详见 [4.3](#43-turnstile-人机验证可选v150-起)。
 
 | `OPTIONS` | 任意 | 无 | CORS 预检 |
 
