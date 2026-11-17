@@ -14,3 +14,27 @@ READ_TOKEN=
 # 获取方式：企业微信 App → 群聊 → 右上角「…」→ 群机器人 → 添加 → 复制 Webhook 地址。
 # 线上部署时请改用 Dashboard → Settings → Variables → Secrets 设置同名变量，不要写进代码。
 WECOM_WEBHOOK=
+
+# ---------------------------------------------------------------------------
+# Cloudflare Turnstile 人机验证（可选，默认关闭）
+# ---------------------------------------------------------------------------
+# 登录接口 /api/login 增加一层人机验证，防暴力破解与脚本自动化。
+# 官方文档：https://developers.cloudflare.com/turnstile/
+#
+# 获取方式：Cloudflare Dashboard → Turnstile → Add widget
+#   - 名称随意，例如 cloudflare-notify
+#   - Widget Domain 填你的部署域名（如 ntfy.588816.xyz）
+#   - 拿到 Site Key（0x... 开头）与 Secret Key
+#
+# 两个变量必须**同时设置**才会启用；只配一个会被视为"未启用"并在
+# /api/status 标为 misconfigured —— 这样不会出现"配错了把人锁在门外"。
+# 留空（都不填）= 完全不启用，不加载任何外部资源、不放宽 CSP。
+#
+# SITE KEY 是公开的，可以放普通变量；
+# SECRET KEY 只能放 Secrets，绝不能写进代码或提交到 GitHub。
+TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET_KEY=
+
+# 中国大陆部署可选：改用中国区源站（组件与 Siteverify 接口同步切换）。
+# 留空 = 全球站 https://challenges.cloudflare.com
+# TURNSTILE_API_ORIGIN=https://challenges.cloudflare-cn.com

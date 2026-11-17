@@ -28,6 +28,12 @@ import {
   sessionCookieHeader,
   clearSessionCookieHeader,
   SESSION_COOKIE,
+  turnstileEnabled,
+  turnstileMisconfigured,
+  turnstileSiteKey,
+  turnstileSecretKey,
+  verifyTurnstileToken,
+  applyTurnstile,
 } from './utils.js';
 import {
   saveMessage,
@@ -37,7 +43,7 @@ import {
   getVersion,
 } from './messages.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 
 // 登录失败限速：按 IP 计数（单 isolate 内尽力而为，生产环境建议再加 WAF 规则）
 const loginAttempts = new Map();
@@ -94,6 +100,18 @@ export default {
         if (!expected) {
           return json({ ok: true, message: '未启用查看验证' }, 200);
         }
+        // Turnstile 人机验证：配置后必须先通过服务端校验（客户端组件本身不构成保护）
+        if (turnstileEnabled(env)) {
+          const verdict = await verifyTurnstileToken(
+            env,
+            body.turnstileToken || body['cf-turnstile-response'],
+            ip
+          );
+          if (!verdict.ok) {
+            console.warn('[notify] turnstile rejected:', verdict.code);
+            return json({ ok: false, error: '人机验证未通过，请重试' }, 401);
+          }
+        }
         const provided = String(body.token || body.readToken || '').trim();
         if (!provided || !timingSafeEqual(provided, expected)) {
           noteLoginFailure(ip);
@@ -119,9 +137,11 @@ export default {
       // ---- Web UI：服务端鉴权后才下发完整页面 ----
       if (path === '/' || path === '/index.html') {
         const expected = String(env.READ_TOKEN || '').trim();
-        if (!expected) return html(uiHtml);
+        if (!expected) return html(applyTurnstile(uiHtml, env), 200, {}, env);
         const session = getCookie(request, SESSION_COOKIE);
-        if (session && (await verifySessionToken(env, session))) return html(uiHtml);
+        if (session && (await verifySessionToken(env, session))) {
+          return html(applyTurnstile(uiHtml, env), 200, {}, env);
+        }
         const direct = extractToken(request, url);
         if (direct && timingSafeEqual(direct, expected)) {
           const token = await createSessionToken(env);
@@ -136,7 +156,7 @@ export default {
           });
         }
         // 未鉴权：只返回最小登录页（无任何敏感 DOM）
-        return html(LOGIN_HTML, 401);
+        return html(applyTurnstile(LOGIN_HTML, env), 401, {}, env);
       }
 
       // ---- 服务状态与配置自检 ----
@@ -150,6 +170,12 @@ export default {
           version: VERSION,
           needSendToken: Boolean(env.SEND_TOKEN),
           needReadToken: Boolean(env.READ_TOKEN),
+          diagnostics: {
+            turnstileEnabled: turnstileEnabled(env),
+            turnstileSiteKeySet: Boolean(turnstileSiteKey(env)),
+            turnstileSecretKeySet: Boolean(turnstileSecretKey(env)),
+            turnstileMisconfigured: turnstileMisconfigured(env),
+          },
         });
       }
 
@@ -306,10 +332,12 @@ const LOGIN_HTML = `<!DOCTYPE html>
   <p class="lead">该通知服务已开启查看验证。请输入查看密钥（READ_TOKEN）以查看通知与接入地址。</p>
   <label for="loginToken">查看密钥</label>
   <input id="loginToken" type="password" placeholder="READ_TOKEN" autocomplete="current-password" />
+  <!--@TS_WIDGET@-->
   <button id="btnLogin">进入通知中心</button>
   <div class="err" id="loginErr"></div>
   <div class="hint">验证通过后会签发 HttpOnly 会话 Cookie，密钥不会保存在浏览器本地。</div>
 </div>
+<!--@TS_SCRIPTS@-->
 <script>
 (function () {
   'use strict';
@@ -322,11 +350,21 @@ const LOGIN_HTML = `<!DOCTYPE html>
       $('loginErr').classList.add('show');
       return;
     }
+    // Turnstile 启用时必须先拿到验证 token 才能提交（服务端会独立校验）
+    var tsToken = '';
+    if (window.TS && window.TS.enabled()) {
+      tsToken = window.TS.token();
+      if (!tsToken) {
+        $('loginErr').textContent = '请先完成人机验证';
+        $('loginErr').classList.add('show');
+        return;
+      }
+    }
     btn.disabled = true;
     fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token }),
+      body: JSON.stringify({ token: token, turnstileToken: tsToken }),
       credentials: 'same-origin'
     }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
@@ -337,12 +375,16 @@ const LOGIN_HTML = `<!DOCTYPE html>
       $('loginErr').textContent = '验证失败：' + err.message;
       $('loginErr').classList.add('show');
       btn.disabled = false;
+      // token 单次使用：失败后必须重置组件拿新 token
+      if (window.TS && window.TS.enabled()) window.TS.reset();
     });
   });
   $('loginToken').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') $('btnLogin').click();
   });
   $('loginToken').focus();
+  // 组件渲染（登录页容器始终可见，可直接挂载）
+  if (window.TS && window.TS.enabled()) window.TS.start();
 })();
 </script>
 </body>

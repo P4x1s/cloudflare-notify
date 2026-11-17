@@ -19,6 +19,7 @@
 - [3. 验证页面能打开](#3-验证页面能打开)
 - [4. 绑定 KV 命名空间（让消息能存下来）](#4-绑定-kv-命名空间让消息能存下来)
 - [5. 配置密钥 Secrets](#5-配置密钥-secrets)
+- [5B. 开启 Turnstile 人机验证（可选）](#5b-开启-turnstile-人机验证可选)
 - [6. 发送测试消息，验证全链路](#6-发送测试消息验证全链路)
 - [7. 绑定自定义域名（可选但推荐）](#7-绑定自定义域名可选但推荐)
 - [8. 日常使用：三种发送消息方式](#8-日常使用三种发送消息方式)
@@ -53,7 +54,8 @@ Cloudflare 后台有两个入口。本项目**两个都支持**，仓库里各�
 | --- | --- | --- |
 | 代码配置 | GitHub 仓库里的 `wrangler.toml` | Worker 名称、入口文件 |
 | 绑定 Binding | Dashboard → Settings → Bindings | KV 命名空间 `NOTIFICATIONS` |
-| 密钥 Secret | Dashboard → Settings → Variables → Secrets | `SEND_TOKEN`、`WECOM_WEBHOOK` |
+| 密钥 Secret | Dashboard → Settings → Variables → Secrets | `SEND_TOKEN`、`WECOM_WEBHOOK`、`TURNSTILE_SECRET_KEY` |
+| 普通变量 Text | Dashboard → Settings → Variables → Variables | `TURNSTILE_SITE_KEY`（公开的，可放普通变量） |
 
 **密钥绝不写进 GitHub 仓库**——仓库是公开的，写进去等于把发消息权限公开。
 
@@ -63,6 +65,8 @@ Cloudflare 后台有两个入口。本项目**两个都支持**，仓库里各�
 1. `diagnostics.kvBound = true` 且 `kvOk = true`（存储可用）
 2. `needSendToken = true`（发送密钥已设）
 3. 配了企微时 `wecomConfigured = true`（推送可用）
+
+（可选）开了 Turnstile 的话，第 4 条：`diagnostics.turnstileEnabled = true`（人机验证生效）。
 
 ---
 
@@ -306,6 +310,81 @@ https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的key
 
 ---
 
+## 5B. 开启 Turnstile 人机验证（可选）
+
+给登录页加一层 Cloudflare Turnstile 挑战，防暴力破解和脚本自动化。**默认关闭，不配就完全不影响现有部署**（不加载任何外部资源、不放宽 CSP）。
+
+### 步骤 1：在 Cloudflare 创建一个 Turnstile widget
+
+Dashboard → 左侧菜单 **Turnstile** → **Add widget**，填写：
+
+| 字段 | 填什么 |
+| --- | --- |
+| Widget name | 随意，例如 `cloudflare-notify` |
+| Widget Domain | 你的部署域名，如 `ntfy.588816.xyz`（本地调试可再加 `localhost`） |
+| Widget Mode | **Managed**（默认，Cloudflare 自动判定风险） |
+
+创建后拿到两个 key：
+
+- **Site Key**（`0x` 开头）—— 公开的，放普通变量就行
+- **Secret Key** —— 保密的，**只能放 Secrets**
+
+### 步骤 2：填进 Worker
+
+Worker → **Settings** → **Variables and Secrets**：
+
+| 名称 | 类型 | 值 |
+| --- | --- | --- |
+| `TURNSTILE_SITE_KEY` | Text | 上一步的 Site Key（公开） |
+| `TURNSTILE_SECRET_KEY` | **Secret** | 上一步的 Secret Key |
+
+> ⚠️ **两个必须同时设置才生效。** 只配一个 → 视为「未启用」，并在 `/api/status` 里标 `turnstileMisconfigured: true`。这样即使配错半个，也不会把你自己锁在门外打不开登录页。
+
+### 步骤 3：验证
+
+打开登录页，应该能看到 Turnstile 组件（一个可勾选的方框）。验证通过后才能登录。
+
+命令行确认配置状态：
+
+```bash
+curl "https://<你的域名>/api/status" -H "X-Token: <READ_TOKEN>"
+```
+
+`diagnostics` 里应看到：
+
+```json
+{
+  "turnstileEnabled": true,
+  "turnstileSiteKeySet": true,
+  "turnstileSecretKeySet": true,
+  "turnstileMisconfigured": false
+}
+```
+
+### 常见疑问
+
+**Q：需要放行 CSP 吗？**
+不用手动改。启用后服务端会**自动**把 `https://challenges.cloudflare.com` 加进 `script-src` 和 `frame-src`；未启用时 CSP 与之前完全一致。
+
+**Q：中国大陆访问慢/失败？**
+设置变量 `TURNSTILE_API_ORIGIN` = `https://challenges.cloudflare-cn.com`（Text 类型），组件与校验接口会同步切到中国区源站。保存后重新部署/刷新即可生效。
+
+**Q：本地测试用真 key 吗？**
+不用。Cloudflare 官方提供恒定通过的测试密钥：
+
+- Site Key：`1x00000000000000000000AA`
+- Secret Key：`1x0000000000000000000000000000000AA`
+
+写进 `.dev.vars` 即可，本地永远校验通过。
+
+**Q：失败后为什么要求我重新验证？**
+Turnstile token 是**单次使用**且**300 秒过期**的。校验失败后服务端返回 401，前端会调用 `turnstile.reset()` 重新发起挑战——这是官方要求的正确用法，不是 bug。
+
+**Q：会不会泄露密钥？**
+不会。Secret Key 只存在于 Cloudflare 后台，Worker 只在**服务端**调用 Siteverify 接口使用它，前端页面里只有公开的 Site Key。校验失败时对外只返回通用提示「人机验证未通过，请重试」，不暴露具体错误码。
+
+---
+
 ## 6. 发送测试消息，验证全链路
 
 浏览器直接打开（把尖括号内容换成你自己的值）：
@@ -452,7 +531,7 @@ Cloudflare 免费版完全够个人通知使用：
 
 | 文件 | 作用 |
 | --- | --- |
-| `worker.js` | 核心单文件：路由、KV 存储、Web 页面、企业微信推送、方糖兼容端点、会话鉴权全在这里 |
+| `worker.js` | 核心单文件：路由、KV 存储、Web 页面、企业微信推送、方糖兼容端点、会话鉴权、Turnstile 人机验证全在这里 |
 | `_worker.js` | 与 `worker.js` 内容完全相同，Pages advanced mode 入口（见第 2B 节） |
 | `wrangler.toml` | Workers 部署配置（已避开占位符 KV 陷阱） |
 | `GITHUB_DEPLOY.md` | 本文档 |

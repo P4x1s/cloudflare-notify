@@ -36,6 +36,121 @@ export const HTML_CSP = [
   "form-action 'self'",
 ].join('; ');
 
+// ============================== Turnstile 人机验证 ==============================
+// 与单文件版 worker.js 行为一致：两个环境变量同时存在才启用，
+// 服务端调用 Siteverify 校验（客户端组件本身不构成保护）。
+export const TURNSTILE_ACTION = 'login';
+export const TURNSTILE_DEFAULT_ORIGIN = 'https://challenges.cloudflare.com';
+
+export function turnstileSiteKey(env) {
+  return String((env && env.TURNSTILE_SITE_KEY) || '').trim();
+}
+
+export function turnstileSecretKey(env) {
+  return String((env && env.TURNSTILE_SECRET_KEY) || '').trim();
+}
+
+export function turnstileEnabled(env) {
+  return Boolean(turnstileSiteKey(env)) && Boolean(turnstileSecretKey(env));
+}
+
+/** 只配了一半 → 配置不完整（不启用，避免把人锁在门外） */
+export function turnstileMisconfigured(env) {
+  return Boolean(turnstileSiteKey(env)) !== Boolean(turnstileSecretKey(env));
+}
+
+/** 中国区部署可设 TURNSTILE_API_ORIGIN=https://challenges.cloudflare-cn.com */
+export function turnstileOrigin(env) {
+  const raw = String((env && env.TURNSTILE_API_ORIGIN) || '').trim().replace(/\/+$/, '');
+  return raw || TURNSTILE_DEFAULT_ORIGIN;
+}
+
+/** 启用 Turnstile 时放行 challenges.cloudflare.com（官方要求的 script-src + frame-src） */
+export function buildCsp(env) {
+  if (!turnstileEnabled(env)) return HTML_CSP;
+  const origin = turnstileOrigin(env);
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline' ${origin}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    `connect-src 'self' ${origin}`,
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    `frame-src 'self' ${origin}`,
+    "form-action 'self'",
+  ].join('; ');
+}
+
+/** 合法 IP 才作为 remoteip 上报 */
+function normalizeIp(ip) {
+  const s = String(ip || '').trim();
+  if (!s || s === 'unknown') return '';
+  if (/^[0-9]{1,3}(\.[0-9]{1,3}){3}$/.test(s)) return s;
+  if (s.indexOf(':') >= 0 && /^[0-9a-fA-F:.]+$/.test(s)) return s;
+  return '';
+}
+
+/** 由 token 派生稳定 UUID 幂等键：同一 token 重试视为同一次校验 */
+async function uuidFromText(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cfn-turnstile:' + text));
+  const b = new Uint8Array(digest).slice(0, 16);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const hex = Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * 服务端校验 Turnstile token（Siteverify）。失败一律拒绝（fail closed）。
+ * 返回 { ok, code, hostname }；code 只进服务端日志，不回给客户端。
+ */
+export async function verifyTurnstileToken(env, token, ip) {
+  const secret = turnstileSecretKey(env);
+  if (!secret) return { ok: true, code: 'disabled' };
+
+  const response = String(token || '').trim();
+  if (!response) return { ok: false, code: 'missing-input-response' };
+  if (response.length > 2048) return { ok: false, code: 'invalid-input-response' };
+
+  const payload = { secret, response };
+  const remoteip = normalizeIp(ip);
+  if (remoteip) payload.remoteip = remoteip;
+  payload.idempotency_key = await uuidFromText(response);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let data = null;
+    try {
+      const res = await fetch(`${turnstileOrigin(env)}/turnstile/v0/siteverify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        if (attempt === 0) continue;
+        return { ok: false, code: 'http-' + res.status };
+      }
+      data = await res.json();
+    } catch (e) {
+      if (attempt === 0) continue;
+      return { ok: false, code: 'network-error' };
+    }
+
+    if (!data || typeof data !== 'object') return { ok: false, code: 'bad-response' };
+    if (data.success === true) {
+      if (data.action && data.action !== TURNSTILE_ACTION) return { ok: false, code: 'action-mismatch' };
+      return { ok: true, code: 'ok', hostname: String(data.hostname || '') };
+    }
+
+    const codes = Array.isArray(data['error-codes']) ? data['error-codes'] : [];
+    if (codes.indexOf('internal-error') >= 0 && attempt === 0) continue;
+    return { ok: false, code: codes.join(',') || 'unknown' };
+  }
+  return { ok: false, code: 'unknown' };
+}
+
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
@@ -50,14 +165,14 @@ export function json(data, status = 200, extraHeaders = {}) {
   });
 }
 
-/** 返回 HTML 响应 */
-export function html(body, status = 200, extraHeaders = {}) {
+/** 返回 HTML 响应（启用 Turnstile 时 CSP 自动放行 challenges.cloudflare.com） */
+export function html(body, status = 200, extraHeaders = {}, env = null) {
   return new Response(body, {
     status,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': HTML_CSP,
+      'Content-Security-Policy': buildCsp(env),
       ...SECURITY_HEADERS,
       ...extraHeaders,
     },
@@ -205,4 +320,131 @@ export async function hasPermission(request, url, env, kind, body) {
 /** 生成唯一 ID（时间戳 + 随机数） */
 export function generateId() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+}
+
+// ------------------------------ Turnstile 客户端组件 ------------------------------
+// 与单文件版 worker.js 完全一致：显式渲染（render=explicit），
+// api.js 按需动态注入（不拖慢主界面），容器可见后再 render()
+// （不可见容器渲染出的 iframe 尺寸为 0，组件会显示异常）。
+export const TURNSTILE_CLIENT_JS = [
+  '(function () {',
+  "  'use strict';",
+  '  var CFG = window.__TS_CFG__ || {};',
+  '  var st = { token: "", id: null, started: false, injected: false, tries: 0 };',
+  '  function el(id) { return document.getElementById(id); }',
+  '  function note(text, info) {',
+  '    var m = el("tsMsg");',
+  '    if (!m) return;',
+  '    m.textContent = text || "";',
+  '    m.className = "ts-msg" + (text ? " show" : "") + (info ? " info" : "");',
+  '  }',
+  '  function fire(type) {',
+  '    try {',
+  '      document.dispatchEvent(new CustomEvent(type, { detail: { token: st.token } }));',
+  '    } catch (e) {',
+  '      try { document.dispatchEvent(new Event(type)); } catch (e2) {}',
+  '    }',
+  '  }',
+  '  function visible(box) {',
+  '    // 容器不可见时 iframe 会拿到 0 尺寸，组件将无法正常显示，必须等可见后再渲染',
+  '    return !!(box.offsetWidth || box.offsetHeight || box.getClientRects().length);',
+  '  }',
+  '  function draw() {',
+  '    var box = el("tsWidget");',
+  '    if (!box || !window.turnstile || st.id !== null) return;',
+  '    if (!visible(box)) {',
+  '      st.tries += 1;',
+  '      if (st.tries < 60) { setTimeout(draw, 50); }',
+  '      return;',
+  '    }',
+  '    st.tries = 0;',
+  '    st.id = window.turnstile.render(box, {',
+  '      sitekey: CFG.sitekey,',
+  '      action: CFG.action || "login",',
+  '      theme: "auto",',
+  '      size: "normal",',
+  '      callback: function (t) { st.token = t; note(""); fire("ts:token"); },',
+  '      "error-callback": function () { st.token = ""; note("人机验证加载失败，请刷新页面重试"); fire("ts:token"); },',
+  '      "expired-callback": function () { st.token = ""; note("验证已过期，请重新验证"); fire("ts:token"); },',
+  '      "timeout-callback": function () { st.token = ""; note("验证超时，请重新验证"); fire("ts:token"); }',
+  '    });',
+  '  }',
+  '  function ready(fn) {',
+  '    // 注意：显式渲染（render=explicit）模式下 turnstile.ready() 的回调并不保证被触发，',
+  '    // 因此这里不依赖它，onload= 参数回调 + script.onload 才是可靠的触发点。',
+  '    var called = false;',
+  '    function once() { if (called) return; called = true; fn(); }',
+  '    if (window.turnstile && window.turnstile.ready) {',
+  '      try { window.turnstile.ready(once); } catch (e) {}',
+  '    }',
+  '    setTimeout(once, 1200);',
+  '  }',
+  '  function inject() {',
+  '    if (st.injected) return;',
+  '    st.injected = true;',
+  '    // 官方推荐的显式渲染写法：api.js?onload=<全局回调名>，API 就绪时回调被调用。',
+  '    // 再叠一层 script.onload 兜底；两者都调用幂等的 draw()，重复调用无副作用。',
+  '    var CB = "__tsOnLoad";',
+  '    window[CB] = function () { ready(draw); };',
+  '    var s = document.createElement("script");',
+  '    s.src = CFG.origin + "/turnstile/v0/api.js?render=explicit&onload=" + CB;',
+  '    s.async = true;',
+  '    s.defer = true;',
+  '    s.onload = function () { ready(draw); };',
+  '    s.onerror = function () {',
+  '      st.injected = false;',
+  '      note("人机验证组件加载失败，请检查网络后刷新重试");',
+  '    };',
+  '    document.head.appendChild(s);',
+  '  }',
+  '  window.TS = {',
+  '    enabled: function () { return !!CFG.sitekey; },',
+  '    token: function () { return st.token; },',
+  '    reset: function () {',
+  '      st.token = "";',
+  '      if (st.id !== null && window.turnstile && window.turnstile.reset) {',
+  '        try { window.turnstile.reset(st.id); } catch (e) {}',
+  '      }',
+  '      fire("ts:token");',
+  '    },',
+  '    start: function () {',
+  '      if (!CFG.sitekey) return;',
+  '      if (window.turnstile && window.turnstile.render) {',
+  '        // API 已就绪（例如弹层第二次打开），直接渲染；容器不可见时 draw() 会自行重试',
+  '        draw();',
+  '        return;',
+  '      }',
+  '      inject();',
+  '    }',
+  '  };',
+  '})();',
+].join('\n');
+
+/** Turnstile 组件容器（仅在启用时插入） */
+export function tsWidgetBlock() {
+  return [
+    '<div class="ts-widget" id="tsWidget"></div>',
+    '<div class="ts-msg" id="tsMsg"></div>',
+  ].join('\n');
+}
+
+/** Turnstile 客户端脚本（仅在启用时插入；未启用时页面不引用任何外部资源） */
+export function tsScriptBlock(env) {
+  const cfg = JSON.stringify({
+    sitekey: turnstileSiteKey(env),
+    action: TURNSTILE_ACTION,
+    origin: turnstileOrigin(env),
+  }).replace(/</g, '\\u003c');
+  return [
+    `<script>window.__TS_CFG__=${cfg};</script>`,
+    `<script>${TURNSTILE_CLIENT_JS}</script>`,
+  ].join('\n');
+}
+
+/** 把模板里的 Turnstile 占位符换成真实内容 */
+export function applyTurnstile(tpl, env) {
+  const on = turnstileEnabled(env);
+  return tpl
+    .split('<!--@TS_WIDGET@-->').join(on ? tsWidgetBlock() : '')
+    .split('<!--@TS_SCRIPTS@-->').join(on ? tsScriptBlock(env) : '');
 }

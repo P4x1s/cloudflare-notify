@@ -222,6 +222,17 @@
     background: rgba(220,38,38,.10); color: var(--danger); font-size: 12px;
   }
   .auth-err.show { display: block; }
+
+  /* ---------- Turnstile 人机验证 ---------- */
+  /* 组件容器必须在渲染时可见（display:none 会让 iframe 尺寸为 0），故不做隐藏切换 */
+  .ts-widget { margin: 16px 0; min-height: 65px; }
+  .ts-msg {
+    display: none; margin-top: 10px; padding: 8px 10px; border-radius: 9px;
+    background: rgba(220,38,38,.10); color: var(--danger); font-size: 12px;
+  }
+  .ts-msg.show { display: block; }
+  .ts-msg.info { background: rgba(79,140,255,.10); color: var(--primary); }
+  .primary:disabled { opacity: .55; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -325,6 +336,7 @@
     <p class="sec-desc">为安全起见，页面中的密钥与推送地址已清空。请重新验证以继续。</p>
     <label for="loginToken">查看密钥（READ_TOKEN）</label>
     <input id="loginToken" type="password" placeholder="READ_TOKEN" autocomplete="current-password" />
+    <!--@TS_WIDGET@-->
     <div class="row">
       <button class="primary" id="btnLogin">重新验证</button>
     </div>
@@ -413,6 +425,8 @@
     $('loginOverlay').classList.remove('hidden');
     $('btnLogout').style.display = 'none';
     setStatus('error', '需要重新验证');
+    // 弹层此刻才可见 → 此时挂载 Turnstile 组件（不可见容器渲染出的 iframe 尺寸为 0）
+    if (window.TS && window.TS.enabled()) window.TS.start();
   }
 
   function fmtTime(ts) {
@@ -610,11 +624,17 @@
     var btn = this;
     var token = $('loginToken').value.trim();
     if (!token) { $('loginErr').textContent = '请输入查看密钥'; $('loginErr').classList.add('show'); return; }
+    // Turnstile 启用时必须先拿到验证 token 才能提交（服务端会独立校验）
+    var tsToken = '';
+    if (window.TS && window.TS.enabled()) {
+      tsToken = window.TS.token();
+      if (!tsToken) { $('loginErr').textContent = '请先完成人机验证'; $('loginErr').classList.add('show'); return; }
+    }
     btn.disabled = true;
     fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token }),
+      body: JSON.stringify({ token: token, turnstileToken: tsToken }),
       credentials: 'same-origin'
     }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
@@ -624,6 +644,8 @@
     }).catch(function (err) {
       $('loginErr').textContent = '验证失败：' + err.message;
       $('loginErr').classList.add('show');
+      // token 单次使用：失败后必须重置组件拿新 token
+      if (window.TS && window.TS.enabled()) window.TS.reset();
     }).finally(function () { btn.disabled = false; });
   });
   $('loginToken').addEventListener('keydown', function (e) {
@@ -780,5 +802,6 @@
   init();
 })();
 </script>
+<!--@TS_SCRIPTS@-->
 </body>
 </html>

@@ -311,6 +311,17 @@ const UI_CSS = `
     background: rgba(220,38,38,.10); color: var(--danger); font-size: 12px;
   }
   .auth-err.show { display: block; }
+
+  /* ---------- Turnstile 人机验证 ---------- */
+  /* 组件容器必须在渲染时可见（display:none 会让 iframe 尺寸为 0），故不做隐藏切换 */
+  .ts-widget { margin: 16px 0; min-height: 65px; }
+  .ts-msg {
+    display: none; margin-top: 10px; padding: 8px 10px; border-radius: 9px;
+    background: rgba(220,38,38,.10); color: var(--danger); font-size: 12px;
+  }
+  .ts-msg.show { display: block; }
+  .ts-msg.info { background: rgba(79,140,255,.10); color: var(--primary); }
+  .primary:disabled { opacity: .55; cursor: not-allowed; }
 `;
 
 const UI_HTML = `<!DOCTYPE html>
@@ -422,6 +433,7 @@ const UI_HTML = `<!DOCTYPE html>
     <p class="sec-desc">为安全起见，页面中的密钥与推送地址已清空。请重新验证以继续。</p>
     <label for="loginToken">查看密钥（READ_TOKEN）</label>
     <input id="loginToken" type="password" placeholder="READ_TOKEN" autocomplete="current-password" />
+    <!--@TS_WIDGET@-->
     <div class="row">
       <button class="primary" id="btnLogin">重新验证</button>
     </div>
@@ -431,6 +443,7 @@ const UI_HTML = `<!DOCTYPE html>
 
 <div class="toast" id="toast"></div>
 
+<!--@TS_SCRIPTS@-->
 <script>
 (function () {
   'use strict';
@@ -510,6 +523,8 @@ const UI_HTML = `<!DOCTYPE html>
     $('loginOverlay').classList.remove('hidden');
     $('btnLogout').style.display = 'none';
     setStatus('error', '需要重新验证');
+    // 弹层此刻才可见 → 此时挂载 Turnstile 组件（不可见容器渲染出的 iframe 尺寸为 0）
+    if (window.TS && window.TS.enabled()) window.TS.start();
   }
 
   function fmtTime(ts) {
@@ -533,6 +548,10 @@ const UI_HTML = `<!DOCTYPE html>
       ['发送密钥 SEND_TOKEN', d.sendTokenSet, d.sendTokenSet ? '已设置，方糖地址可用' : '未设置，请先添加 Secret'],
       ['查看密钥 READ_TOKEN', d.readTokenSet, d.readTokenSet ? '已设置，查看需验证' : '未设置，查看页公开'],
       ['企业微信 WECOM_WEBHOOK', d.wecomWebhookSet, d.wecomWebhookSet ? '已配置，可主动推送' : '未配置，仅网页收件箱'],
+      ['人机验证 TURNSTILE', d.turnstileEnabled || !d.turnstileMisconfigured,
+        d.turnstileEnabled ? '已启用，登录需完成人机验证'
+          : (d.turnstileMisconfigured ? '配置不完整：TURNSTILE_SITE_KEY 与 TURNSTILE_SECRET_KEY 必须同时设置'
+                                       : '未启用（可选）')],
     ];
     var allOk = true;
     var html = '';
@@ -707,11 +726,17 @@ const UI_HTML = `<!DOCTYPE html>
     var btn = this;
     var token = $('loginToken').value.trim();
     if (!token) { $('loginErr').textContent = '请输入查看密钥'; $('loginErr').classList.add('show'); return; }
+    // Turnstile 启用时必须先拿到验证 token 才能提交（服务端会独立校验）
+    var tsToken = '';
+    if (window.TS && window.TS.enabled()) {
+      tsToken = window.TS.token();
+      if (!tsToken) { $('loginErr').textContent = '请先完成人机验证'; $('loginErr').classList.add('show'); return; }
+    }
     btn.disabled = true;
     fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token }),
+      body: JSON.stringify({ token: token, turnstileToken: tsToken }),
       credentials: 'same-origin'
     }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
@@ -721,6 +746,8 @@ const UI_HTML = `<!DOCTYPE html>
     }).catch(function (err) {
       $('loginErr').textContent = '验证失败：' + err.message;
       $('loginErr').classList.add('show');
+      // token 单次使用：失败后必须重置组件拿新 token
+      if (window.TS && window.TS.enabled()) window.TS.reset();
     }).finally(function () { btn.disabled = false; });
   });
   $('loginToken').addEventListener('keydown', function (e) {
@@ -904,6 +931,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
     <p class="lead">该通知服务已开启查看验证。请输入查看密钥（READ_TOKEN）以查看通知与接入地址。</p>
     <label for="loginToken">查看密钥</label>
     <input id="loginToken" type="password" placeholder="READ_TOKEN" autocomplete="current-password" />
+    <!--@TS_WIDGET@-->
     <div class="row">
       <button class="primary" id="btnLogin">进入通知中心</button>
     </div>
@@ -914,6 +942,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
 
 <div class="toast" id="toast"></div>
 
+<!--@TS_SCRIPTS@-->
 <script>
 (function () {
   'use strict';
@@ -934,11 +963,21 @@ const LOGIN_HTML = `<!DOCTYPE html>
       $('loginErr').classList.add('show');
       return;
     }
+    // Turnstile 启用时必须先拿到验证 token 才能提交（服务端会独立校验）
+    var tsToken = '';
+    if (window.TS && window.TS.enabled()) {
+      tsToken = window.TS.token();
+      if (!tsToken) {
+        $('loginErr').textContent = '请先完成人机验证';
+        $('loginErr').classList.add('show');
+        return;
+      }
+    }
     btn.disabled = true;
     fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token }),
+      body: JSON.stringify({ token: token, turnstileToken: tsToken }),
       credentials: 'same-origin'
     }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
@@ -949,6 +988,8 @@ const LOGIN_HTML = `<!DOCTYPE html>
       $('loginErr').textContent = '验证失败：' + err.message;
       $('loginErr').classList.add('show');
       btn.disabled = false;
+      // token 单次使用：失败后必须重置组件拿新 token
+      if (window.TS && window.TS.enabled()) window.TS.reset();
     });
   });
 
@@ -956,6 +997,9 @@ const LOGIN_HTML = `<!DOCTYPE html>
     if (e.key === 'Enter') $('btnLogin').click();
   });
   $('loginToken').focus();
+
+  // 组件渲染（登录页容器始终可见，可直接挂载）
+  if (window.TS && window.TS.enabled()) window.TS.start();
 })();
 </script>
 </body>
@@ -993,6 +1037,277 @@ const HTML_CSP = [
   "frame-ancestors 'none'",
   "form-action 'self'",
 ].join('; ');
+
+// ============================== Turnstile 人机验证 ==============================
+// Cloudflare Turnstile 人机验证（可选功能，默认关闭）。
+// 官方文档：https://developers.cloudflare.com/turnstile/
+//
+// 官方明确要求的三条，缺一不可：
+//   1) 前端组件本身**不构成保护**（token 可伪造）→ 必须在服务端调用 Siteverify 校验；
+//   2) token 单次使用、生成后 300 秒过期 → 校验失败后前端要 reset() 重新挑战；
+//   3) 客户端组件需要 CSP 放行 challenges.cloudflare.com（script-src + frame-src）。
+//
+// 启用方式（两个环境变量必须同时存在）：
+//   TURNSTILE_SITE_KEY   —— Cloudflare 控制台给出的公开 site key（0x... 开头），可放普通变量
+//   TURNSTILE_SECRET_KEY —— 同一 widget 的 secret key，**只能放 Secrets**，绝不写进代码
+// 只配一个 → 视为未启用（并在 /api/status 标出"配置不完整"），避免把用户锁在门外。
+// 未启用时不加载任何外部资源、不放宽 CSP，对现有部署零影响。
+const TURNSTILE_ACTION = 'login';
+const TURNSTILE_DEFAULT_ORIGIN = 'https://challenges.cloudflare.com';
+
+/**
+ * 组件与校验接口的源站。
+ * 默认全球站；中国大陆部署可设 TURNSTILE_API_ORIGIN=https://challenges.cloudflare-cn.com
+ * （该地址对应 Cloudflare 中国区 widget，与 site key 所属区域必须一致）
+ */
+function turnstileOrigin(env) {
+  const raw = String((env && env.TURNSTILE_API_ORIGIN) || '').trim().replace(/\/+$/, '');
+  return raw || TURNSTILE_DEFAULT_ORIGIN;
+}
+
+function turnstileSiteKey(env) {
+  return String((env && env.TURNSTILE_SITE_KEY) || '').trim();
+}
+
+function turnstileSecretKey(env) {
+  return String((env && env.TURNSTILE_SECRET_KEY) || '').trim();
+}
+
+/** 两个变量都在才算启用 */
+function turnstileEnabled(env) {
+  return Boolean(turnstileSiteKey(env)) && Boolean(turnstileSecretKey(env));
+}
+
+/** 只配了一半 → 配置不完整（页面可显示，服务端不放行校验，避免直接锁死用户） */
+function turnstileMisconfigured(env) {
+  return Boolean(turnstileSiteKey(env)) !== Boolean(turnstileSecretKey(env));
+}
+
+/** 页面 CSP：启用 Turnstile 时放行 challenges.cloudflare.com（官方要求的 script-src + frame-src） */
+function buildCsp(env) {
+  if (!turnstileEnabled(env)) return HTML_CSP;
+  const origin = turnstileOrigin(env);
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline' ${origin}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    `connect-src 'self' ${origin}`,
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    `frame-src 'self' ${origin}`,
+    "form-action 'self'",
+  ].join('; ');
+}
+
+/** 合法 IP 才作为 remoteip 上报（X-Forwarded-For 可能是多段列表，非法值会让 Siteverify 报错） */
+function normalizeIp(ip) {
+  const s = String(ip || '').trim();
+  if (!s || s === 'unknown') return '';
+  if (/^[0-9]{1,3}(\.[0-9]{1,3}){3}$/.test(s)) return s;
+  if (s.indexOf(':') >= 0 && /^[0-9a-fA-F:.]+$/.test(s)) return s;
+  return '';
+}
+
+/** 由任意字符串派生稳定 UUID（幂等键：同一 token 重试时复用同一 key，不会被判成 token 重放） */
+async function uuidFromText(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cfn-turnstile:' + text));
+  const b = new Uint8Array(digest).slice(0, 16);
+  b[6] = (b[6] & 0x0f) | 0x40; // version 4
+  b[8] = (b[8] & 0x3f) | 0x80; // variant 10xx
+  const hex = Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * 服务端校验 Turnstile token（Siteverify）。
+ * 返回 { ok, code, hostname }；code 只写进服务端日志，不返回给客户端（避免泄露内部细节）。
+ * 失败一律拒绝（fail closed）：宁可让人重试，也不放行未经验证的请求。
+ */
+async function verifyTurnstileToken(env, token, ip) {
+  const secret = turnstileSecretKey(env);
+  if (!secret) return { ok: true, code: 'disabled' };
+
+  const response = String(token || '').trim();
+  if (!response) return { ok: false, code: 'missing-input-response' };
+  if (response.length > 2048) return { ok: false, code: 'invalid-input-response' };
+
+  const payload = { secret, response };
+  const remoteip = normalizeIp(ip);
+  if (remoteip) payload.remoteip = remoteip;
+  // 幂等键：同一 token 的网络重试视为同一次校验，不会被误判成"token 重放"
+  payload.idempotency_key = await uuidFromText(response);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let data = null;
+    try {
+      const res = await fetch(`${turnstileOrigin(env)}/turnstile/v0/siteverify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        if (attempt === 0) continue; // 网络抖动重试（同幂等键）
+        return { ok: false, code: 'http-' + res.status };
+      }
+      data = await res.json();
+    } catch (e) {
+      if (attempt === 0) continue; // 网络异常重试
+      return { ok: false, code: 'network-error' };
+    }
+
+    if (!data || typeof data !== 'object') return { ok: false, code: 'bad-response' };
+    if (data.success === true) {
+      // 官方建议：action 与预期不符也要拒绝（测试密钥不返回 action，跳过该判断）
+      if (data.action && data.action !== TURNSTILE_ACTION) {
+        return { ok: false, code: 'action-mismatch' };
+      }
+      return { ok: true, code: 'ok', hostname: String(data.hostname || '') };
+    }
+
+    const codes = Array.isArray(data['error-codes']) ? data['error-codes'] : [];
+    // internal-error 是 Cloudflare 侧故障，可安全重试；timeout-or-duplicate（token 已用过/过期）不能重试
+    if (codes.indexOf('internal-error') >= 0 && attempt === 0) continue;
+    return { ok: false, code: codes.join(',') || 'unknown' };
+  }
+  return { ok: false, code: 'unknown' };
+}
+
+// ------------------------------ 客户端组件 ------------------------------
+// 显式渲染（render=explicit）：由我们自己控制挂载时机与回调。
+// 为什么不在页面加载时直接挂载：主界面的重新验证弹层默认 display:none，
+// 组件在不可见容器里渲染会拿到 0 尺寸的 iframe，导致组件显示异常。
+// 所以：api.js 按需动态注入（不进 <head>，不拖慢主界面），容器可见后再 render()。
+
+// 客户端脚本（登录页与主界面弹层共用）。刻意保持 ES5 写法，兼容老浏览器。
+const TURNSTILE_CLIENT_JS = [
+  '(function () {',
+  "  'use strict';",
+  '  var CFG = window.__TS_CFG__ || {};',
+  '  var st = { token: "", id: null, started: false, injected: false, tries: 0 };',
+  '  function el(id) { return document.getElementById(id); }',
+  '  function note(text, info) {',
+  '    var m = el("tsMsg");',
+  '    if (!m) return;',
+  '    m.textContent = text || "";',
+  '    m.className = "ts-msg" + (text ? " show" : "") + (info ? " info" : "");',
+  '  }',
+  '  function fire(type) {',
+  '    try {',
+  '      document.dispatchEvent(new CustomEvent(type, { detail: { token: st.token } }));',
+  '    } catch (e) {',
+  '      try { document.dispatchEvent(new Event(type)); } catch (e2) {}',
+  '    }',
+  '  }',
+  '  function visible(box) {',
+  '    // 容器不可见时 iframe 会拿到 0 尺寸，组件将无法正常显示，必须等可见后再渲染',
+  '    return !!(box.offsetWidth || box.offsetHeight || box.getClientRects().length);',
+  '  }',
+  '  function draw() {',
+  '    var box = el("tsWidget");',
+  '    if (!box || !window.turnstile || st.id !== null) return;',
+  '    if (!visible(box)) {',
+  '      st.tries += 1;',
+  '      if (st.tries < 60) { setTimeout(draw, 50); }',
+  '      return;',
+  '    }',
+  '    st.tries = 0;',
+  '    st.id = window.turnstile.render(box, {',
+  '      sitekey: CFG.sitekey,',
+  '      action: CFG.action || "login",',
+  '      theme: "auto",',
+  '      size: "normal",',
+  '      callback: function (t) { st.token = t; note(""); fire("ts:token"); },',
+  '      "error-callback": function () { st.token = ""; note("人机验证加载失败，请刷新页面重试"); fire("ts:token"); },',
+  '      "expired-callback": function () { st.token = ""; note("验证已过期，请重新验证"); fire("ts:token"); },',
+  '      "timeout-callback": function () { st.token = ""; note("验证超时，请重新验证"); fire("ts:token"); }',
+  '    });',
+  '  }',
+  '  function ready(fn) {',
+  '    // 注意：显式渲染（render=explicit）模式下 turnstile.ready() 的回调并不保证被触发，',
+  '    // 因此这里不依赖它，onload= 参数回调 + script.onload 才是可靠的触发点。',
+  '    var called = false;',
+  '    function once() { if (called) return; called = true; fn(); }',
+  '    if (window.turnstile && window.turnstile.ready) {',
+  '      try { window.turnstile.ready(once); } catch (e) {}',
+  '    }',
+  '    setTimeout(once, 1200);',
+  '  }',
+  '  function inject() {',
+  '    if (st.injected) return;',
+  '    st.injected = true;',
+  '    // 官方推荐的显式渲染写法：api.js?onload=<全局回调名>，API 就绪时回调被调用。',
+  '    // 再叠一层 script.onload 兜底；两者都调用幂等的 draw()，重复调用无副作用。',
+  '    var CB = "__tsOnLoad";',
+  '    window[CB] = function () { ready(draw); };',
+  '    var s = document.createElement("script");',
+  '    s.src = CFG.origin + "/turnstile/v0/api.js?render=explicit&onload=" + CB;',
+  '    s.async = true;',
+  '    s.defer = true;',
+  '    s.onload = function () { ready(draw); };',
+  '    s.onerror = function () {',
+  '      st.injected = false;',
+  '      note("人机验证组件加载失败，请检查网络后刷新重试");',
+  '    };',
+  '    document.head.appendChild(s);',
+  '  }',
+  '  window.TS = {',
+  '    enabled: function () { return !!CFG.sitekey; },',
+  '    token: function () { return st.token; },',
+  '    reset: function () {',
+  '      st.token = "";',
+  '      if (st.id !== null && window.turnstile && window.turnstile.reset) {',
+  '        try { window.turnstile.reset(st.id); } catch (e) {}',
+  '      }',
+  '      fire("ts:token");',
+  '    },',
+  '    start: function () {',
+  '      if (!CFG.sitekey) return;',
+  '      if (window.turnstile && window.turnstile.render) {',
+  '        // API 已就绪（例如弹层第二次打开），直接渲染；容器不可见时 draw() 会自行重试',
+  '        draw();',
+  '        return;',
+  '      }',
+  '      inject();',
+  '    }',
+  '  };',
+  '})();',
+].join('\n');
+
+/** Turnstile 组件容器（仅在启用时插入，避免未启用时页面出现空块） */
+function tsWidgetBlock() {
+  return [
+    '<div class="ts-widget" id="tsWidget"></div>',
+    '<div class="ts-msg" id="tsMsg"></div>',
+  ].join('\n');
+}
+
+/** Turnstile 客户端脚本（仅在启用时插入；未启用时页面不引用任何外部资源） */
+function tsScriptBlock(env) {
+  const cfg = JSON.stringify({
+    sitekey: turnstileSiteKey(env),
+    action: TURNSTILE_ACTION,
+    origin: turnstileOrigin(env),
+  }).replace(/</g, '\\u003c'); // 防止 JSON 里的 < 提前闭合 script 标签
+  return [
+    `<script>window.__TS_CFG__=${cfg};</script>`,
+    `<script>${TURNSTILE_CLIENT_JS}</script>`,
+  ].join('\n');
+}
+
+/**
+ * 把模板里的 Turnstile 占位符换成真实内容。
+ * 未启用 → 占位符替换为空串（页面完全不引用外部资源，CSP 保持最严）。
+ */
+function applyTurnstile(tpl, env) {
+  const widget = turnstileEnabled(env) ? tsWidgetBlock() : '';
+  const scripts = turnstileEnabled(env) ? tsScriptBlock(env) : '';
+  return tpl
+    .split('<!--@TS_WIDGET@-->').join(widget)
+    .split('<!--@TS_SCRIPTS@-->').join(scripts);
+}
 
 // ============================== 会话与鉴权 ==============================
 // 会话 Cookie 用 READ_TOKEN 作 HMAC 密钥签名（无状态，不需要 KV）。
@@ -1144,13 +1459,13 @@ function json(data, status = 200, extraHeaders = {}, env) {
   });
 }
 
-function html(body, status = 200, extraHeaders = {}) {
+function html(body, status = 200, extraHeaders = {}, env = null) {
   return new Response(body, {
     status,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': HTML_CSP,
+      'Content-Security-Policy': buildCsp(env),
       ...SECURITY_HEADERS,
       ...extraHeaders,
     },
@@ -1433,7 +1748,7 @@ async function serverchanSend(env, key, data) {
   });
 }
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 
 export default {
   async fetch(request, env) {
@@ -1458,6 +1773,19 @@ export default {
         if (!expected) {
           // 未配置 READ_TOKEN：无需登录，直接放行
           return json({ ok: true, message: '未启用查看验证' }, 200);
+        }
+        // Turnstile 人机验证：配置后必须先通过服务端校验（客户端组件本身不构成保护）
+        if (turnstileEnabled(env)) {
+          const verdict = await verifyTurnstileToken(
+            env,
+            body.turnstileToken || body['cf-turnstile-response'],
+            ip
+          );
+          if (!verdict.ok) {
+            // 只记服务端日志，不把具体错误码回给客户端
+            console.warn('[notify] turnstile rejected:', verdict.code);
+            return json({ ok: false, error: '人机验证未通过，请重试' }, 401);
+          }
         }
         if (!provided || !timingSafeEqual(provided, expected)) {
           noteLoginFailure(ip);
@@ -1485,11 +1813,11 @@ export default {
         const expected = String(env.READ_TOKEN || '').trim();
         if (!expected) {
           // 公开模式：未配置 READ_TOKEN，直接返回完整页面
-          return html(UI_HTML);
+          return html(applyTurnstile(UI_HTML, env), 200, {}, env);
         }
         const session = getCookie(request, SESSION_COOKIE);
         if (session && (await verifySessionToken(env, session))) {
-          return html(UI_HTML);
+          return html(applyTurnstile(UI_HTML, env), 200, {}, env);
         }
         // 兼容：URL / Header 直接带 READ_TOKEN → 立刻换成会话 Cookie 并 302 到干净地址，
         // 这样密钥不会长期留在浏览器历史、地址栏和 Referer 里。
@@ -1507,7 +1835,7 @@ export default {
           });
         }
         // 未鉴权：只返回最小登录页，不含任何密钥/地址/通知数据
-        return html(LOGIN_HTML, 401);
+        return html(applyTurnstile(LOGIN_HTML, env), 401, {}, env);
       }
 
       // 服务状态 + 配置自检（用于排查"页面打不开 / 功能异常"）
@@ -1546,6 +1874,10 @@ export default {
             wecomWebhookSet: Boolean(env.WECOM_WEBHOOK),
             serverchanReady: Boolean(env.SEND_TOKEN || rotatingKey),
             rotatingKeyReady: Boolean(rotatingKey),
+            turnstileEnabled: turnstileEnabled(env),
+            turnstileSiteKeySet: Boolean(turnstileSiteKey(env)),
+            turnstileSecretKeySet: Boolean(turnstileSecretKey(env)),
+            turnstileMisconfigured: turnstileMisconfigured(env),
           },
         });
       }
