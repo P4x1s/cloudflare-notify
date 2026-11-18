@@ -6,7 +6,7 @@
 
 ![通知中心界面](docs/screenshot-notifications.png)
 
-**[在线体验 →](https://ntfy.588816.xyz/)** · 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 ---
 
