@@ -322,7 +322,7 @@ widget 已经建好的话，**这一步直接跳过创建流程**：
 
 - Dashboard → 左侧菜单 **Turnstile** → 点开你已有的 widget
 - 记下 **Site Key**（`0x` 开头）与 **Secret Key**
-- 确认 **Widget Domain** 列表里有你的部署域名（如 `ntfy.588816.xyz`）
+- 确认 **Widget Domain** 列表里有你的部署域名（如 `cloudflare-notify.com`）
 
 > ⚠️ **Turnstile 按浏览器访问的 hostname 匹配 widget 域名。** 域名不在列表里 → 组件渲染了但**永远拿不到 token**，登录永远失败。这是最常见的「配好了却用不了」的原因。
 >
@@ -333,7 +333,7 @@ widget 已经建好的话，**这一步直接跳过创建流程**：
 | 字段 | 填什么 |
 | --- | --- |
 | Widget name | 随意，例如 `cloudflare-notify` |
-| Widget Domain | 你的部署域名，如 `ntfy.588816.xyz` |
+| Widget Domain | 你的部署域名，如 `cloudflare-notify.com` |
 | Widget Mode | **Managed**（默认，Cloudflare 自动判定风险） |
 
 ### 步骤 2：填进 Worker
@@ -344,7 +344,7 @@ Worker → **Settings** → **Variables and Secrets**：
 | --- | --- | --- | --- |
 | `TURNSTILE_SITE_KEY` | Text | 上一步的 Site Key（公开） | ✅ |
 | `TURNSTILE_SECRET_KEY` | **Secret** | 上一步的 Secret Key | ✅ |
-| `TURNSTILE_HOSTNAMES` | Text | 允许的域名白名单，逗号分隔（如 `ntfy.588816.xyz`） | 可选 |
+| `TURNSTILE_HOSTNAMES` | Text | 允许的域名白名单，逗号分隔（如 `cloudflare-notify.com`） | 可选 |
 
 > ⚠️ **两个必须同时设置才生效。** 只配一个 → 视为「未启用」，并在 `/api/status` 里标 `turnstileMisconfigured: true`。这样即使配错半个，也不会把你自己锁在门外打不开登录页。
 >
@@ -381,7 +381,7 @@ curl "https://<你的域名>/api/status" -H "X-Token: <READ_TOKEN>"
   "turnstileSiteKeySet": true,
   "turnstileSecretKeySet": true,
   "turnstileMisconfigured": false,
-  "turnstileHostnames": ["ntfy.588816.xyz"]
+  "turnstileHostnames": ["cloudflare-notify.com"]
 }
 ```
 
@@ -637,7 +637,7 @@ Cloudflare 免费版完全够个人通知使用：
 | **部署后消息收不到/页面报错** | KV 绑定 `NOTIFICATIONS` 被覆盖掉了 | Dashboard → Worker → Settings → Bindings → KV Namespace，确认变量名是 `NOTIFICATIONS` 且仍在 |
 | **Actions 部署成功但 Turnstile 没生效** | `TURNSTILE_SECRET_KEY` 在 Dashboard 而非 GitHub Secrets | Turnstile 的 secret 要加在 **Dashboard → Worker → Variables and Secrets**（类型 Secret），这样重新部署不会丢。workflow 里 `wrangler secret list` 体检步骤会提示 |
 | **登录页有一块空白，但没人机验证组件** | Turnstile 组件加载失败或容器被隐藏 | ① 容器不能用 `display:none`（iframe 会拿到 0 尺寸）；② 看浏览器控制台是否有 CSP 拦截 `challenges.cloudflare.com`（启用后 CSP 会自动放行，若你额外改过 CSP 需保留）；③ 组件脚本是按需注入的，联网不通会显示「人机验证组件加载失败」 |
-| **组件出现了，但一直转圈/提示验证失败** | **widget 的 Widget Domain 不含当前访问的域名** | Turnstile 按浏览器访问的 hostname 匹配。Dashboard → Turnstile → 你的 widget → 加上 `ntfy.588816.xyz`（含 `www` 与自定义域名，别漏） |
+| **组件出现了，但一直转圈/提示验证失败** | **widget 的 Widget Domain 不含当前访问的域名** | Turnstile 按浏览器访问的 hostname 匹配。Dashboard → Turnstile → 你的 widget → 加上 `cloudflare-notify.com`（含 `www` 与自定义域名，别漏） |
 | **本地能渲染组件但拿不到 token** | 用了真实 site key，本地 hostname 不在 widget 域名列表 | 正常现象。真 key 只在 widget 允许的域名下签发 token；本地自测请用官方测试密钥（`1x00000000000000000000AA`） |
 | **配好后一直返回 403** | `hostname` 校验不通过 | 服务端校验 token 的 hostname 必须等于当前访问域名（或在 `TURNSTILE_HOSTNAMES` 白名单内）。若你用了多个域名，给 `TURNSTILE_HOSTNAMES` 填全 |
 | **只有 key 填了，登录仍然不要人机验证** | 两个变量没同时设置 | 必须 `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` **同时**存在才启用。查 `/api/status` 的 `turnstileMisconfigured` |

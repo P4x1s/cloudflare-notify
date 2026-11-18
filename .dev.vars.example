@@ -23,7 +23,7 @@ WECOM_WEBHOOK=
 #
 # 获取方式：Cloudflare Dashboard → Turnstile → Add widget
 #   - 名称随意，例如 cloudflare-notify
-#   - Widget Domain 填你的部署域名（如 ntfy.588816.xyz）
+#   - Widget Domain 填你的部署域名（如 cloudflare-notify.com）
 #   - 拿到 Site Key（0x... 开头）与 Secret Key
 #
 # 两个变量必须**同时设置**才会启用；只配一个会被视为"未启用"并在
@@ -45,4 +45,4 @@ TURNSTILE_SECRET_KEY=
 #            且不会因为漏配而把用户锁在门外。
 #   - 填了 = 严格白名单，只有列表内的域名能通过校验。
 # 注意：生产环境不要填 localhost / 127.0.0.1（官方明确提醒）。
-# TURNSTILE_HOSTNAMES=ntfy.588816.xyz
+# TURNSTILE_HOSTNAMES=cloudflare-notify.com

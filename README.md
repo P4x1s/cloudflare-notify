@@ -333,7 +333,7 @@ npx wrangler secret put READ_TOKEN
 widget 已经在 Cloudflare 控制台建好了，直接复用：
 
 1. Dashboard → **Turnstile** → 点开你已有的 widget，记下 **Site Key**（`0x` 开头）与 **Secret Key**。
-2. 确认 **Widget Domain** 里包含你的部署域名（如 `ntfy.588816.xyz`）。
+2. 确认 **Widget Domain** 里包含你的部署域名（如 `cloudflare-notify.com`）。
    —— Turnstile 按**浏览器访问的 hostname** 匹配，域名不在列表里组件不会签发 token（这是最常见的「配好了却不出组件」原因）。
 3. 按下面「B. 配置」把两个 key 填进去即可。
 
