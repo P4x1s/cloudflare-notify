@@ -18,6 +18,7 @@
 | API 发消息 | `POST /api/send`，支持 JSON 与表单，兼容方糖的 `title` / `desp` 字段 |
 | 即时查看 | Web 页面每 5 秒自动轮询，无需手动刷新 |
 | 通知折叠 | 折叠时显示**标题 + 内容摘要**（两行），不用展开也能读到正文；点击展开看全文，支持全部展开/折叠 |
+| **富文本通知** | 推送正文支持有限 HTML 渲染（加粗/链接/换行/列表/代码块/引用/标题），服务端白名单消毒防 XSS；纯文本消息保留原始换行，展示风格统一 |
 | 统一面板布局 | 整页一个外框，内部用发丝线分区，不再是四张各自浮起的卡片 |
 | 密钥分层与轮换 | `SEND_TOKEN` 为管理主密钥（只用于后台轮换），另有可一键随机生成的**轮换推送密钥**填给软件；换后旧密钥立即失效 |
 | 三种安全传参 | 密钥可放 Header（`X-Token` / `Authorization: Bearer`）、POST body 或 URL，避免密钥进入 URL 历史与日志 |
@@ -255,7 +256,10 @@ GET /api/messages?limit=50&version=<上次响应中的 version>   # 增量检查
       "content": "耗时 23s",
       "type": "text",
       "source": "github-actions",
-      "timestamp": 1763281200000
+      "timestamp": 1763281200000,
+      "isRich": false,
+      "contentHtml": "耗时 23s",
+      "previewText": "耗时 23s"
     }
   ]
 }
@@ -263,6 +267,38 @@ GET /api/messages?limit=50&version=<上次响应中的 version>   # 增量检查
 
 `limit` 取值 1–200，默认 50。`timestamp` 为毫秒级 Unix 时间戳。
 当客户端传入的 `version` 与服务端一致时，响应为 `{"ok":true,"unchanged":true,"version":"..."}`，Worker **不会读取全量列表**，这是控制免费额度的关键机制。
+
+**v1.7 起每条消息附加三个渲染字段**（原字段原样保留，旧客户端不受影响）：
+
+| 字段 | 说明 |
+| --- | --- |
+| `isRich` | 内容是否含 HTML 标签；`false` 时前端按纯文本保留原始换行 |
+| `contentHtml` | 服务端白名单消毒后的 HTML，可直接 `innerHTML`；等价于 `content` 的安全渲染版 |
+| `previewText` | 剥离标签后的纯文本摘要（块级标签转换行，压缩连续空行，最长 220 字） |
+
+### 3.5 富文本消息（v1.7.0 起）
+
+推送 `content` 支持有限的 HTML 渲染，网页通知会按格式展示：
+
+```bash
+curl -X POST "https://<你的域名>/send" \
+  -H "X-Token: <轮换密钥>" \
+  -d "title=部署完成" \
+  -d "content=<b>构建成功</b>：v1.7.0 已发布到 <a href=\"https://example.com\">生产环境</a>。<br>耗时 <code>42s</code>"
+```
+
+**支持的标签（白名单）**：`b strong i em u s del ins mark small sub sup`（行内强调）、`code pre`（代码）、`br hr`（换行/分隔线）、`p div span blockquote`（块级）、`h1–h6`（标题）、`ul ol li`（列表）、`a`（链接）。
+
+**安全机制（escape-then-allowlist，服务端消毒）**：
+
+1. 先把整个内容做 HTML 转义——所有 `< > & " '` 变成实体；
+2. 再只把「转义后的白名单标签」还原成真标签，**所有属性一律丢弃**；
+3. 不在白名单里的标签（`script` / `iframe` / `img` / `svg`…）保持转义状态**以文本显示**，`onerror=` 之类注入天然无效；
+4. `a` 是唯一带属性的例外：只还原 `href`，协议必须是 `http://` / `https://` / `mailto:`（`javascript:`、`data:` 及实体编码绕过一律丢弃），并强制 `target="_blank" rel="noopener noreferrer"`。
+
+不写 HTML 标签的纯文本消息不受影响：原始换行与空行照常保留（`pre-wrap`），两种消息在页面上排版一致。
+
+**企业微信推送**：正文自动做 HTML→markdown 转换（加粗/斜体/行内代码/链接/换行保留语义，其余标签剥离），群里不会出现 `<b>xxx</b>` 这类字面标签。
 
 ### 3.4 KV 数据格式
 

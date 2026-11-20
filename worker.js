@@ -58,6 +58,17 @@
  * 未设置 READ_TOKEN 时保持零配置的公开模式（页面本身不含任何密钥）。
  * ======================================================================
  *
+ * ====================== 富文本消息展示（v1.7） ======================
+ * 推送正文支持有限 HTML 渲染（加粗/斜体/链接/换行/列表/代码块/引用/标题等）：
+ *   <b>加粗</b> <a href="https://x.com">链接</a> <br> <p> <ul><li> <pre><code> <blockquote> ...
+ * 安全：服务端 escape-then-allowlist 白名单消毒——先全量转义再只还原白名单标签，
+ *   script/iframe/img 及所有事件属性保持转义原样显示；a 只放行 http/https/mailto
+ *   协议的 href 并强制 rel="noopener noreferrer"。纯文本消息保留原始换行。
+ * API：GET /api/messages 每条消息附加 isRich / contentHtml / previewText 三个字段，
+ *   原 title/content 等字段原样保留，旧客户端不受影响。
+ * 企业微信推送：正文自动做 HTML→markdown 转换（加粗/链接/换行保留语义）。
+ * ======================================================================
+ *
  * ====================== 方糖 / Server酱 兼容推送 ======================
  * 把「轮换推送密钥」当作你的 key（也可用 SEND_TOKEN，但不推荐放进 URL）：
  *   https://<你的域名>/<key>.send
@@ -265,10 +276,48 @@ const UI_CSS = `
   .msg-detail { padding: 0 14px 12px 35px; }
   .msg:not(.open) .msg-detail { display: none; }
   .msg .m-body {
-    font-size: 13px; color: var(--text); white-space: pre-wrap;
+    font-size: 13px; color: var(--text);
     word-break: break-word; border-top: var(--line); padding-top: 10px;
     max-height: 380px; overflow-y: auto;
   }
+  /* 纯文本消息：pre-wrap 保留推送时的原始换行与空行 */
+  .msg .m-body.text { white-space: pre-wrap; }
+  /* 富文本消息：排版交给白名单标签，源码换行折叠为空格 */
+  .msg .m-body.rich { white-space: normal; line-height: 1.7; }
+  .msg .m-body.rich p, .msg .m-body.rich div, .msg .m-body.rich blockquote,
+  .msg .m-body.rich pre, .msg .m-body.rich ul, .msg .m-body.rich ol { margin: 7px 0; }
+  .msg .m-body.rich > :first-child { margin-top: 0; }
+  .msg .m-body.rich > :last-child { margin-bottom: 0; }
+  .msg .m-body.rich h1, .msg .m-body.rich h2, .msg .m-body.rich h3,
+  .msg .m-body.rich h4, .msg .m-body.rich h5, .msg .m-body.rich h6 {
+    margin: 12px 0 5px; font-weight: 600; line-height: 1.4;
+  }
+  .msg .m-body.rich h1 { font-size: 17px; }
+  .msg .m-body.rich h2 { font-size: 16px; }
+  .msg .m-body.rich h3 { font-size: 15px; }
+  .msg .m-body.rich h4, .msg .m-body.rich h5, .msg .m-body.rich h6 { font-size: 14px; }
+  .msg .m-body.rich a {
+    color: var(--primary); text-decoration: none;
+    border-bottom: 1px dashed rgba(79,140,255,.45); word-break: break-all;
+  }
+  .msg .m-body.rich a:hover { border-bottom-style: solid; }
+  .msg .m-body.rich code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; background: rgba(127,127,127,.14);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  .msg .m-body.rich pre {
+    background: rgba(127,127,127,.10); border: var(--line); border-radius: 8px;
+    padding: 9px 12px; overflow-x: auto; white-space: pre;
+  }
+  .msg .m-body.rich pre code { background: none; padding: 0; font-size: 12px; }
+  .msg .m-body.rich blockquote {
+    border-left: 3px solid var(--primary); padding: 2px 0 2px 10px; color: var(--muted);
+  }
+  .msg .m-body.rich ul, .msg .m-body.rich ol { padding-left: 22px; }
+  .msg .m-body.rich li { margin: 3px 0; }
+  .msg .m-body.rich mark { background: rgba(255,213,79,.45); color: inherit; padding: 0 2px; border-radius: 3px; }
+  .msg .m-body.rich hr { border: none; border-top: var(--line); margin: 12px 0; }
   .msg .m-meta { margin-top: 8px; font-size: 11px; color: var(--muted); }
   .toggle-all { font-size: 12px; padding: 5px 10px; }
 
@@ -622,12 +671,15 @@ const UI_HTML = `<!DOCTYPE html>
         (m.source ? '<span class="m-source">' + esc(m.source) + '</span>' : '') +
         '<span class="m-time">' + esc(fmtTime(m.timestamp)) + '</span>' +
         '</div>' +
-        '<div class="m-preview">' + esc(previewOf(m.content)) + '</div>' +
+        '<div class="m-preview">' + esc(m.previewText != null ? m.previewText : previewOf(m.content)) + '</div>' +
         '</div>' +
         '<span class="m-hint">展开</span>' +
         '</div>' +
         '<div class="msg-detail">' +
-        (m.content ? '<div class="m-body">' + esc(m.content) + '</div>' : '') +
+        // 富文本：服务端已按白名单消毒（contentHtml），这里不再二次转义；
+        // 旧数据/旧接口无该字段时降级为纯文本转义，展示不劣化。
+        (m.content ? '<div class="m-body ' + (m.isRich ? 'rich' : 'text') + '">' +
+          (m.contentHtml || esc(m.content)) + '</div>' : '') +
         '<div class="m-meta">来源：' + esc(m.source || 'api') + ' · ID：' + esc(id) + '</div>' +
         '</div></div>';
     }
@@ -1605,6 +1657,103 @@ async function rotateSendKey(env) {
   return key;
 }
 
+// ==================== 富文本消息渲染（v1.7，安全白名单） ====================
+// 设计：escape-then-allowlist（先转义再放行）。
+//   1) 先把整个内容做 HTML 转义——所有 < > & " ' 都变成实体；
+//   2) 再把「转义后的白名单标签」还原成真标签。
+// 任何不在白名单里的标签（script/iframe/img/svg/...）和**所有属性**都保持转义状态、
+// 以纯文本显示——从根上杜绝 XSS，不依赖黑名单枚举，"onerror=" 之类注入天然无效。
+// a 是唯一带属性的例外：只还原 href，协议必须是 http/https/mailto，其他写法一律
+// 丢弃；同时强制 target="_blank" rel="noopener noreferrer" 防 tab 劫持。
+// 纯文本消息（不含任何 HTML 标签）由前端用 pre-wrap 原样保留换行，两条链路展示一致。
+
+const RICH_ALLOWED_TAGS = [
+  'b', 'strong', 'i', 'em', 'u', 's', 'del', 'ins', 'mark', 'small', 'sub', 'sup',
+  'code', 'pre', 'br', 'hr',
+  'p', 'div', 'span', 'blockquote',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ul', 'ol', 'li', 'a',
+];
+
+/** 服务端版 HTML 转义（与前端 esc() 规则一致，保证往返无损） */
+function escapeHtmlText(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+function sanitizeRichHtml(content) {
+  // 1) 全量转义（null/undefined 容错为空串）
+  let out = escapeHtmlText(content == null ? '' : content);
+  // 2) 还原白名单标签。转义后标签形如 &lt;div class=&quot;x&quot;&gt;；
+  //    原文中的真实 < > 已全部转义，非贪婪匹配到第一个 &gt; 边界可靠。
+  out = out.replace(/&lt;(\/?)([a-zA-Z][a-zA-Z0-9]*)([\s\S]*?)\/?&gt;/g, (m, slash, tag, attrs) => {
+    tag = tag.toLowerCase();
+    if (RICH_ALLOWED_TAGS.indexOf(tag) === -1) return m; // 不在白名单 → 保持转义显示
+    if (slash) return '</' + tag + '>';                  // 闭合标签：属性无意义，直接还原
+    if (tag === 'br') return '<br>';
+    if (tag === 'hr') return '<hr>';
+    if (tag === 'a') {
+      // 仅提取 href 属性（引号转义后是 &quot; / &#39;，用反向引用保证配对）
+      const href = /href\s*=\s*(&quot;|&#39;)([\s\S]*?)\1/i.exec(attrs);
+      if (!href) return '<a>';
+      const value = href[2].trim();
+      // 协议白名单：javascript:/data:/vbscript: 等危险协议一律丢弃，
+      // 不做实体解码——实体形态的绕过（&#106;avascript:）同样不匹配、同样被丢弃
+      if (!/^(https?:\/\/|mailto:)/i.test(value)) return '<a>';
+      // value 保持转义状态输出（&amp; 等实体由浏览器自行解码），不引入二次解码风险
+      return '<a href="' + value + '" target="_blank" rel="noopener noreferrer">';
+    }
+    return '<' + tag + '>'; // 其余白名单标签：属性全部丢弃
+  });
+  return out;
+}
+
+/** 剥离全部标签取纯文本（折叠摘要预览用；< 后必须跟字母/斜杠/! 才视为标签，避免误伤 "a < b"） */
+function stripTagsText(content, maxLen = 220) {
+  let s = String(content || '');
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = s.replace(/<\/(p|div|blockquote|pre|h[1-6]|li|tr|ul|ol)>/gi, '\n');
+  s = s.replace(/<[a-zA-Z/!][^>]*>/g, '');
+  s = s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return s.slice(0, maxLen);
+}
+
+/** HTML → 企业微信 markdown：加粗/斜体/行内代码/链接/换行转换，其余标签剥离后解码实体 */
+function htmlToMarkdown(content) {
+  let s = String(content || '');
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = s.replace(/<\/(p|div|blockquote|pre|h[1-6]|li|tr|ul|ol)>/gi, '\n');
+  s = s.replace(/<(strong|b)>/gi, '**').replace(/<\/(strong|b)>/gi, '**');
+  s = s.replace(/<(em|i)>/gi, '*').replace(/<\/(em|i)>/gi, '*');
+  s = s.replace(/<code>/gi, '`').replace(/<\/code>/gi, '`');
+  s = s.replace(/<a\s[^>]*href\s*=\s*["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, href, text) => {
+    const safe = /^(https?:\/\/|mailto:)/i.test(href) ? href : '';
+    const label = text.replace(/<[^>]*>/g, '');
+    return safe ? '[' + label + '](' + safe + ')' : label;
+  });
+  s = s.replace(/<[a-zA-Z/!][^>]*>/g, '');
+  s = s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  return s;
+}
+
+/** 判定内容是否含 HTML 标签（决定前端 rich / text 两种渲染模式） */
+function looksLikeHtml(content) {
+  return /<\s*\/?\s*[a-zA-Z][^>]*>/.test(String(content || ''));
+}
+
+/** 为 API 输出附加渲染字段（只加字段不改存储，旧客户端与新字段互不影响） */
+function decorateMessage(m) {
+  if (!m || typeof m !== 'object') return m;
+  const content = String(m.content || '');
+  return Object.assign({}, m, {
+    isRich: looksLikeHtml(content),
+    contentHtml: sanitizeRichHtml(content),
+    previewText: stripTagsText(content),
+  });
+}
+
 async function saveMessage(env, input) {
   const id = generateId();
   const now = Date.now();
@@ -1681,9 +1830,11 @@ async function pushToWecom(env, message) {
   const webhook = String(env.WECOM_WEBHOOK || '').trim();
   if (!webhook) return { configured: false, ok: false, skipped: true };
 
-  // 企业微信 markdown 上限 4096 字节，中文按 3 字节算，正文截断以留足余量
-  const title = String(message.title || '（无标题）').slice(0, 100);
-  const body = String(message.content || '').slice(0, 1000);
+  // 企业微信 markdown 上限 4096 字节，中文按 3 字节算，正文截断以留足余量。
+  // 正文/标题先做 HTML→markdown 转换：加粗/链接/换行保留语义，其余标签剥离，
+  // 避免群里有到 <b>xxx</b> 这类字面标签碎片。
+  const title = (stripTagsText(message.title || '', 100) || '（无标题）');
+  const body = htmlToMarkdown(message.content).slice(0, 1000);
   const meta = String(message.source || 'api').slice(0, 60) + ' · ' + fmtWecomTime(message.timestamp);
   const markdown = {
     msgtype: 'markdown',
@@ -1783,7 +1934,7 @@ async function serverchanSend(env, key, data) {
   });
 }
 
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 
 export default {
   async fetch(request, env) {
@@ -1956,7 +2107,7 @@ export default {
         if (clientVersion && clientVersion === version) {
           return json({ ok: true, unchanged: true, version });
         }
-        const messages = await listMessages(env, url.searchParams.get('limit') || 50);
+        const messages = (await listMessages(env, url.searchParams.get('limit') || 50)).map(decorateMessage);
         return json({
           ok: true,
           unchanged: false,

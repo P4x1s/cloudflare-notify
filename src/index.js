@@ -43,9 +43,10 @@ import {
   clearMessages,
   countMessages,
   getVersion,
+  decorateMessage,
 } from './messages.js';
 
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 
 // 登录失败限速：按 IP 计数（单 isolate 内尽力而为，生产环境建议再加 WAF 规则）
 const loginAttempts = new Map();
@@ -195,7 +196,7 @@ export default {
         if (clientVersion && clientVersion === version) {
           return json({ ok: true, unchanged: true, version });
         }
-        const messages = await listMessages(env, url.searchParams.get('limit') || 50);
+        const messages = (await listMessages(env, url.searchParams.get('limit') || 50)).map(decorateMessage);
         return json({
           ok: true,
           unchanged: false,
