@@ -94,3 +94,49 @@ https://你的域名/api/status
 [ ] Dashboard 部署状态 = Success
 [ ] 首页顶部配置自检全绿
 ```
+
+---
+
+## 附录：RouterHook 接入排障（v1.8）
+
+完整教程见 [docs/ROUTERHOOK.md](docs/ROUTERHOOK.md)。这里只列最常见的坑。
+
+### RouterHook 日志显示「推送失败」
+
+ RouterHook 的 `routerhook_sender.sh` 靠**响应体是否包含 `success` 字符串**判定成功。本服务正常响应一定含 `"success":"success"`。若显示失败：
+
+- 看响应体：400（JSON/事件名问题）、401（密钥错误）、500（服务端异常）；
+- 密钥是否**当前**轮换密钥——轮换后旧 key 立即失效，所有设备都要更新 `X-Token`；
+- `Authorization` 头若使用，必须是 `Bearer <密钥>`（空格分隔）。
+
+### 通知中心收不到普通消息
+
+1. Hook URL 是否为 `https://你的域名/api/routerhook/_PRM_EVENT`（`_PRM_EVENT` 会被替换成事件名）；
+2. 普通事件的 JSON 里是否有 `msgTYPE` 字段——`manuINFO`/`cronINFO` 由 RouterHook 自动加；
+3. `/api/status` 是否 `kvOk: true`；
+4. 看 Dashboard Logs 是否有 `[notify] unhandled error`。
+
+### 传感器只收到单条、没有聚合
+
+说明 **Durable Object 绑定缺失**，`ROUTERHOOK_SENSOR` 未绑定时会自动降级为逐条即时通知（数据不丢失但不聚合）。修复：
+
+- Dashboard → Worker → Settings → Bindings → Add → Durable Object → 变量名 `ROUTERHOOK_SENSOR`、类 `RouterHookSensorDO`；
+- 用 wrangler 部署则确认 `wrangler.toml` 里 `[[durable_objects.bindings]]` 与 `[[migrations]]` 都在。
+
+### 传感器汇总一直不来
+
+- 默认窗口 60 秒：第一条数据到达后满 60 秒才生成汇总，请耐心等待；
+- 确认没有把 `ROUTERHOOK_WINDOW_SECONDS` 设成非法值（只接受 30/60/120）；
+- Dashboard Logs 搜索 `[routerhook-do]` 看 Alarm 是否报错。
+
+### 企业微信没有传感器通知
+
+这是**设计如此**：企业微信只接收聚合后的汇总通知（窗口到期时推一次），不接收逐条传感器，避免刷屏。普通事件仍即时推送。
+
+### 多设备数据串到一起
+
+检查每台路由器的 Hook URL 是否带了不同的 `?device=` 参数，例如 `?device=RAX50` 与 `?device=AX86U`。虚拟传感器没有 `sysINFO`，**必须**用 URL 参数指定设备，否则全部归到默认设备 `Router`。
+
+### HTTP 500 且日志是 KV 写入额度错误
+
+Cloudflare 免费版 KV 写入 **1000 次/天，按账户共享**。检查账户内其它 Worker（如 uptime 监控类）是否高频写入 KV。传感器聚合已把逐条写入压缩为窗口级，但其它服务的写入仍会占用同一额度。

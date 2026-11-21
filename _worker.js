@@ -69,6 +69,18 @@
  * 企业微信推送：正文自动做 HTML→markdown 转换（加粗/链接/换行保留语义）。
  * ======================================================================
  *
+ * ====================== RouterHook 路由器通知兼容（v1.8） ======================
+ * 专用接口：POST /api/routerhook/{event}?device=<设备标识>
+ *   event：manuINFO / cronINFO / ifUP / newDHCP / rh_* 传感器；未知事件通用接收不丢弃。
+ *   鉴权：X-Token / Authorization: Bearer / body token / query token（复用发送密钥体系）。
+ *   响应体含 "success" 字符串——RouterHook 的 sender.sh 靠 grep success 判定成功。
+ * 普通事件立即生成「中文摘要 + 完整原始 JSON」通知；rh_* 传感器进入 Durable Object
+ *   按设备独立聚合，固定 60 秒窗口（ROUTERHOOK_WINDOW_SECONDS 可配 30/60/120），
+ *   窗口到期生成一条汇总通知，企业微信只推汇总后的消息，避免刷屏。
+ * 绑定：Durable Object namespace = ROUTERHOOK_SENSOR（见 wrangler.toml 的 binding/migration）。
+ *   未绑定时自动降级为逐条即时通知，数据不丢失。
+ * ======================================================================
+ *
  * ====================== 方糖 / Server酱 兼容推送 ======================
  * 把「轮换推送密钥」当作你的 key（也可用 SEND_TOKEN，但不推荐放进 URL）：
  *   https://<你的域名>/<key>.send
@@ -1863,6 +1875,302 @@ async function pushToWecom(env, message) {
   }
 }
 
+// ============================== RouterHook 兼容模块 ==============================
+// 说明：字段以 RouterHook 实际源码（sdlyfjx/rogsoft RouterHook 分支）为准。
+// 普通事件靠 body.msgTYPE 识别；虚拟传感器 body 无 msgTYPE，只能靠 URL 路径事件名识别。
+// 所有内容最终都会经过 decorateMessage → sanitizeRichHtml 白名单消毒后再进 innerHTML，
+// 因此这里拼接的白名单标签（h3/div/hr/pre/code）会被保留，其它一切内容（含注入）会被转义为文本。
+
+const RH_MAX_JSON_CHARS = 12000;
+const RH_EVENT_TITLE = {
+  manuINFO: '手动状态报告',
+  cronINFO: '定时状态报告',
+  ifUP: '网络重拨通知',
+  newDHCP: '新设备上线',
+};
+const RH_SENSOR_NAME = {
+  rh_load: '系统负载',
+  rh_mem_free: '空闲内存',
+  rh_swap_free: '空闲 SWAP',
+  rh_cpu_temp: 'CPU 温度',
+  rh_24g_temp: '2.4G 温度',
+  rh_5g1_temp: '5G-1 温度',
+  rh_dev: '聚合设备在线状态',
+};
+
+/** 安全文本化：null/undefined/空串返回空；对象转 JSON；布尔转 true/false */
+function rhText(v, fallback) {
+  if (v === undefined || v === null || v === '') return fallback == null ? '' : String(fallback);
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'object') {
+    try { return JSON.stringify(v); } catch (_) { return ''; }
+  }
+  return String(v);
+}
+
+/** 设备标识规范化：保留原始名称用于展示，同时生成安全 key（仅字母数字_-.） */
+function rhDeviceKey(raw) {
+  const s = rhText(raw, '').trim() || 'Router';
+  const safe = s.replace(/[^A-Za-z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 64);
+  return { display: s.slice(0, 80), key: safe || 'Router' };
+}
+
+/** 解析设备标识：URL device 参数优先 → sysINFO.routerNAME → 默认 Router */
+function rhResolveDevice(event, body, url) {
+  const fromUrl = url.searchParams.get('device');
+  const fromBody = body && body.sysINFO ? body.sysINFO.routerNAME : null;
+  return rhDeviceKey(fromUrl || fromBody || 'Router');
+}
+
+function rhLine(label, value) {
+  const s = rhText(value);
+  return s ? '<div>' + label + '：' + s + '</div>' : '';
+}
+
+function rhSection(title, lines) {
+  const body = lines.filter(Boolean).join('');
+  return body ? '<h3>【' + title + '】</h3>' + body : '';
+}
+
+/** 完整原始 JSON：缩进展示，超长截断；内容交给 sanitizeRichHtml 统一消毒 */
+function rhRawJson(obj) {
+  let s;
+  try { s = JSON.stringify(obj, null, 2); } catch (_) { s = rhText(obj); }
+  if (!s) return '';
+  if (s.length > RH_MAX_JSON_CHARS) s = s.slice(0, RH_MAX_JSON_CHARS) + '\n…（原始 JSON 过长，已截断）';
+  return '<hr><h3>【完整原始 JSON】</h3><pre><code>' + s + '</code></pre>';
+}
+
+/** WAN / netSTATE 数组（兼容多 WAN） */
+function rhWanLines(wans) {
+  const arr = Array.isArray(wans) ? wans : (wans ? [wans] : []);
+  const out = [];
+  arr.forEach((w, i) => {
+    if (!w || typeof w !== 'object') return;
+    const tag = arr.length > 1 ? 'WAN' + i : 'WAN';
+    if (rhText(w.proto)) out.push(rhLine(tag + ' 连接协议', w.proto));
+    if (rhText(w.pubIPv4)) out.push(rhLine(tag + ' 公网 IPv4', w.pubIPv4));
+    if (rhText(w.pubIPv6)) out.push(rhLine(tag + ' 公网 IPv6', w.pubIPv6));
+    if (rhText(w.wanIPv4)) out.push(rhLine(tag + ' WAN IPv4', w.wanIPv4));
+    if (Array.isArray(w.wanDNS) && w.wanDNS.some(rhText)) out.push(rhLine(tag + ' DNS', w.wanDNS.filter(rhText).join('、')));
+    if (rhText(w.wanRX)) out.push(rhLine(tag + ' 接收流量', w.wanRX));
+    if (rhText(w.wanTX)) out.push(rhLine(tag + ' 发送流量', w.wanTX));
+  });
+  return out;
+}
+
+/** 客户端 / DHCP 租期列表 */
+function rhClientLines(arr) {
+  const list = Array.isArray(arr) ? arr : [];
+  const out = [];
+  list.forEach((c) => {
+    if (!c || typeof c !== 'object') return;
+    const parts = [];
+    if (rhText(c.name)) parts.push('名称：' + rhText(c.name));
+    if (rhText(c.ip)) parts.push('IP：' + rhText(c.ip));
+    if (rhText(c.mac)) parts.push('MAC：' + rhText(c.mac));
+    if (parts.length) out.push('<div>' + parts.join('　') + '</div>');
+  });
+  return out;
+}
+
+/** manuINFO / cronINFO 中文摘要（字段不存在不显示，不虚构数据） */
+function formatRhStatus(body, device, isCron) {
+  const sys = body.sysINFO && typeof body.sysINFO === 'object' ? body.sysINFO : {};
+  const temp = body.tempINFO && typeof body.tempINFO === 'object' ? body.tempINFO : {};
+  const net = body.netINFO && typeof body.netINFO === 'object' ? body.netINFO : {};
+  const basic = [];
+  basic.push(rhLine('设备名称', sys.routerNAME || device.display));
+  basic.push(rhLine('当前时间', sys.routerTIME));
+  basic.push(rhLine('固件版本', sys.routerFIRMWARE));
+  basic.push(rhLine('工作模式', sys.routerMODE));
+  basic.push(rhLine('运行时间', sys.routerUPTIME));
+  if (Array.isArray(sys.routerAVGLOAD)) {
+    const lbl = ['系统负载(1min)', '系统负载(5min)', '系统负载(15min)'];
+    sys.routerAVGLOAD.forEach((v, i) => basic.push(rhLine(lbl[i] || ('系统负载' + i), v)));
+  }
+  if (sys.routerMEM && typeof sys.routerMEM === 'object') {
+    const unit = rhText(sys.routerMEM.unit, '');
+    basic.push(rhLine('内存全部', rhText(sys.routerMEM.all) ? rhText(sys.routerMEM.all) + unit : ''));
+    basic.push(rhLine('内存空闲', rhText(sys.routerMEM.free) ? rhText(sys.routerMEM.free) + unit : ''));
+  }
+  if (sys.routerSWAP && typeof sys.routerSWAP === 'object') {
+    basic.push(rhLine('SWAP 空闲', sys.routerSWAP.free));
+    basic.push(rhLine('SWAP 全部', sys.routerSWAP.total));
+  }
+  if (sys.routerJFFS && typeof sys.routerJFFS === 'object') {
+    basic.push(rhLine('JFFS 已用', sys.routerJFFS.used));
+    basic.push(rhLine('JFFS 全部', sys.routerJFFS.total));
+    basic.push(rhLine('JFFS 可用', sys.routerJFFS.available));
+    basic.push(rhLine('JFFS 使用率', sys.routerJFFS.use));
+  }
+  const temps = [];
+  const tu = rhText(temp.unit, '');
+  temps.push(rhLine('CPU 温度', rhText(temp.CPU) ? rhText(temp.CPU) + tu : ''));
+  temps.push(rhLine('2.4G 温度', rhText(temp['24G']) ? rhText(temp['24G']) + tu : ''));
+  temps.push(rhLine('5G-1 温度', rhText(temp['5G1']) ? rhText(temp['5G1']) + tu : ''));
+  temps.push(rhLine('5G-2 温度', rhText(temp['5G2']) ? rhText(temp['5G2']) + tu : ''));
+  const network = rhWanLines(net.WAN);
+  network.push(rhLine('DDNS', net.DDNS));
+  network.push(rhLine('国内网络', net.chinaSTATUS));
+  network.push(rhLine('国外网络', net.foreignSTATUS));
+  network.push(rhLine('LAN IP', net.routerLANIP));
+  if (net.wifiINFO && typeof net.wifiINFO === 'object') {
+    Object.keys(net.wifiINFO).forEach((k) => {
+      if (k === 'end') return;
+      network.push(rhLine('WiFi ' + k, net.wifiINFO[k]));
+    });
+  }
+  if (net.guestINFO && typeof net.guestINFO === 'object') {
+    Object.keys(net.guestINFO).forEach((k) => {
+      if (k === 'end') return;
+      network.push(rhLine('访客 WiFi ' + k, net.guestINFO[k]));
+    });
+  }
+  const usb = [];
+  if (Array.isArray(body.usbINFO)) {
+    body.usbINFO.forEach((u, i) => {
+      if (!u || typeof u !== 'object' || !Object.keys(u).length) return;
+      const tag = 'USB' + (i + 1);
+      usb.push(rhLine(tag + ' 设备', u.name));
+      usb.push(rhLine(tag + ' 挂载状态', u.status));
+      usb.push(rhLine(tag + ' 总容量', u.total));
+      usb.push(rhLine(tag + ' 已使用', u.used));
+      usb.push(rhLine(tag + ' 剩余容量', u.free));
+      usb.push(rhLine(tag + ' 使用率', u.use));
+    });
+  }
+  const clients = rhClientLines(body.cliINFO);
+  const dhcp = rhClientLines(body.dhcpINFO);
+  const countLine = (arr, label) => (Array.isArray(arr) && arr.length ? '<div>' + label + '：' + arr.length + '</div>' : '');
+  let content = rhSection('设备基本信息', basic)
+    + rhSection('温度信息', temps)
+    + rhSection('网络信息', network)
+    + rhSection('USB 信息', usb)
+    + countLine(body.cliINFO, '在线设备数量') + rhSection('在线客户端', clients)
+    + countLine(body.dhcpINFO, 'DHCP 租期设备数量') + rhSection('DHCP 租期列表', dhcp)
+    + rhRawJson(body);
+  return {
+    title: device.display + ' · ' + (isCron ? '定时状态报告' : '手动状态报告'),
+    content,
+    source: 'RouterHook/' + device.key,
+    isSensor: false,
+  };
+}
+
+/** ifUP 网络重拨（兼容 netSTATE 多 WAN 数组） */
+function formatRhIfUp(body, device) {
+  const lines = [];
+  lines.push(rhLine('重拨时间', body.rebootTIME));
+  lines.push(rhLine('路由器运行时间', body.upTIME || body.value1));
+  const network = rhWanLines(body.netSTATE);
+  let content = rhSection('网络重拨', lines) + rhSection('网络状态', network) + rhRawJson(body);
+  return { title: device.display + ' · 网络重拨通知', content, source: 'RouterHook/' + device.key, isSensor: false };
+}
+
+/** newDHCP 新设备上线 */
+function formatRhNewDhcp(body, device) {
+  const lines = [];
+  lines.push(rhLine('新设备名称', body.cliNAME || body.value1));
+  lines.push(rhLine('设备 IP', body.cliIP || body.value2));
+  lines.push(rhLine('设备 MAC', body.cliMAC || body.value3));
+  lines.push(rhLine('上线时间', body.upTIME));
+  lines.push(rhLine('DHCP 到期时间', body.expTIME));
+  let content = rhSection('新设备上线', lines);
+  if (Array.isArray(body.cliLISTS) && body.cliLISTS.length) {
+    content += '<div>当前 DHCP 租期内设备数量：' + body.cliLISTS.length + '</div>'
+      + rhSection('DHCP 租期列表', rhClientLines(body.cliLISTS));
+  }
+  content += rhRawJson(body);
+  return { title: device.display + ' · 新设备上线', content, source: 'RouterHook/' + device.key, isSensor: false };
+}
+
+/** 未知普通事件：通用接收，不丢弃有效数据 */
+function formatRhUnknown(event, body, device) {
+  const content = '<div>收到 RouterHook 事件：' + event + '</div>' + rhRawJson(body);
+  return { title: device.display + ' · ' + event, content, source: 'RouterHook/' + device.key, isSensor: false };
+}
+
+/**
+ * 解析传感器字段（供单条降级与 DO 聚合共用）。
+ * 状态：state 优先 → value1；单位：attributes.unit_of_measurement → value2；名称：friendly_name → value3 → 事件映射。
+ * ON/OFF 转为中文"在线/离线"，不当普通数值处理。
+ */
+function parseRhSensor(event, body) {
+  const attrs = body.attributes && typeof body.attributes === 'object' ? body.attributes : {};
+  let state = body.state !== undefined && body.state !== null && body.state !== '' ? body.state : body.value1;
+  const rawState = rhText(state);
+  const isOnOff = /^on$/i.test(rawState) || /^off$/i.test(rawState);
+  const displayState = isOnOff ? (/^on$/i.test(rawState) ? '在线' : '离线') : rawState;
+  const unit = rhText(attrs.unit_of_measurement) || rhText(body.value2);
+  const name = rhText(attrs.friendly_name) || rhText(body.value3)
+    || RH_SENSOR_NAME[event]
+    || (event.indexOf('rh_dev_') === 0 ? '设备在线状态' : event);
+  return {
+    event,
+    name,
+    state, // 保留原始类型（数字/字符串/布尔），聚合比较与展示分离
+    stateText: rawState,
+    displayState,
+    isOnOff,
+    unit,
+    friendlyName: rhText(attrs.friendly_name),
+    raw: body,
+    ts: Date.now(),
+  };
+}
+
+function sensorDisplay(s) {
+  return s.displayState + (s.unit ? ' ' + s.unit : '');
+}
+
+/** 传感器分组：系统状态 / 温度状态 / 设备在线状态 / 其它 */
+function rhSensorGroup(s) {
+  if (/_temp$/.test(s.event)) return '温度状态';
+  if (s.event === 'rh_dev' || s.event.indexOf('rh_dev_') === 0) return '设备在线状态';
+  if (s.event === 'rh_load' || s.event === 'rh_mem_free' || s.event === 'rh_swap_free') return '系统状态';
+  return '其它传感器';
+}
+
+/** 传感器汇总正文（DO Alarm 到期时生成，供单条降级也复用） */
+function formatRhSensorSummary(sensors, device, windowStart) {
+  const groups = {};
+  sensors.forEach((s) => {
+    const g = rhSensorGroup(s);
+    (groups[g] = groups[g] || []).push(s);
+  });
+  const order = ['系统状态', '温度状态', '设备在线状态', '其它传感器'];
+  let content = '';
+  order.forEach((g) => {
+    const list = groups[g];
+    if (!list || !list.length) return;
+    const lines = list.map((s) => {
+      // rh_load 有 1min/5min/15min 三种单位，用 unit 区分标签避免互相覆盖
+      const label = s.event === 'rh_load' && s.unit ? '系统负载(' + s.unit + ')' : (s.friendlyName || s.name);
+      return rhLine(label, sensorDisplay(s));
+    });
+    content += rhSection(g, lines);
+  });
+  if (windowStart) content += rhSection('更新时间', ['<div>聚合窗口开始：' + new Date(windowStart).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) + '</div>']);
+  const rawLines = sensors.map((s) => '<h3>【' + (s.friendlyName || s.name) + ' · 原始 JSON】</h3><pre><code>'
+    + (() => { let j; try { j = JSON.stringify(s.raw, null, 2); } catch (_) { j = rhText(s.raw); } return j.length > RH_MAX_JSON_CHARS ? j.slice(0, RH_MAX_JSON_CHARS) : j; })()
+    + '</code></pre>');
+  content += '<hr><h3>【完整传感器 JSON】</h3>' + rawLines.join('');
+  return { title: device.display + ' · 传感器状态汇总', content, source: 'RouterHook/' + device.key + '/Sensors', isSensor: true };
+}
+
+/** 单条传感器降级（未绑定 DO 时使用，避免数据丢失） */
+function formatRhSensorSingle(s, device) {
+  return {
+    title: device.display + ' · ' + s.name,
+    content: rhSection('传感器状态', [rhLine(s.friendlyName || s.name, sensorDisplay(s))])
+      + rhSection('更新时间', ['<div>' + new Date(s.ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) + '</div>'])
+      + rhRawJson(s.raw),
+    source: 'RouterHook/' + device.key + '/Sensors',
+    isSensor: true,
+  };
+}
+
 // ============================== 请求处理 ==============================
 async function parseBody(request) {
   const contentType = request.headers.get('Content-Type') || '';
@@ -1934,7 +2242,83 @@ async function serverchanSend(env, key, data) {
   });
 }
 
-const VERSION = '1.7.0';
+/**
+ * RouterHook 传感器聚合 Durable Object。
+ * 每台设备一个实例（idFromName(设备 key)），固定窗口 Alarm（默认 60 秒）：
+ * - 首条数据设置一次 Alarm，后续数据只更新状态、不重置窗口（避免持续上报导致永不触发）；
+ * - 同种传感器（event + unit）只保留最新值，不同传感器并存；
+ * - Alarm 到期生成一条汇总通知，经 saveMessage + pushToWecom 落库推送；
+ * - 刷新期间到达的数据进入下一窗口（不丢失）。
+ */
+// 生产环境（Cloudflare Workers）继承真正的 DurableObject 基类；
+// Node 本地测试无该全局，用空类兜底，保证模块可 import。
+const DOBase = typeof DurableObject !== 'undefined' ? DurableObject : class {};
+export class RouterHookSensorDO extends DOBase {
+  constructor(state, env) {
+    super(state, env);
+    this.state = state;
+    this.env = env;
+    this.storage = state.storage;
+  }
+
+  /** 聚合窗口秒数，可用 ROUTERHOOK_WINDOW_SECONDS 环境变量覆盖（30/60/120） */
+  windowMs() {
+    const raw = Number(this.env && this.env.ROUTERHOOK_WINDOW_SECONDS);
+    const sec = [30, 60, 120].indexOf(raw) >= 0 ? raw : 60;
+    return sec * 1000;
+  }
+
+  async fetch(request) {
+    if (request.method !== 'POST') return json({ ok: false, error: 'method not allowed' }, 405);
+    let input;
+    try { input = await request.json(); } catch (_) { return json({ ok: false, error: 'invalid json' }, 400); }
+    const sensor = input && input.sensor;
+    const deviceRaw = input && input.device;
+    if (!sensor || !sensor.event) return json({ ok: false, error: 'missing sensor' }, 400);
+    const device = rhDeviceKey(deviceRaw || 'Router');
+
+    // 聚合状态：{ sensors: { "<event>|<unit>": sensor }, windowStart: number }
+    const state = (await this.storage.get('agg')) || { sensors: {}, windowStart: 0 };
+    const slot = sensor.event + '|' + (sensor.unit || '');
+    state.sensors[slot] = sensor; // 同种传感器只保留最新
+    if (!state.windowStart) state.windowStart = Date.now();
+    await this.storage.put('agg', state);
+
+    const alarm = await this.storage.getAlarm();
+    if (alarm === null) await this.storage.setAlarm(Date.now() + this.windowMs());
+    return json({ ok: true, success: 'success', aggregated: true, pending: Object.keys(state.sensors).length });
+  }
+
+  async alarm() {
+    // 防重入：先取走状态并清空，确保同一批数据只推送一次
+    const state = (await this.storage.get('agg')) || { sensors: {}, windowStart: 0 };
+    await this.storage.delete('agg');
+    const sensors = Object.keys(state.sensors).map((k) => state.sensors[k]);
+    if (!sensors.length) return;
+
+    try {
+      const device = rhDeviceKey(sensors[0] && sensors[0].device || 'Router');
+      const formatted = formatRhSensorSummary(sensors, device, state.windowStart);
+      const message = await saveMessage(this.env, {
+        title: formatted.title,
+        content: formatted.content,
+        type: 'text',
+        source: formatted.source,
+      });
+      await pushToWecom(this.env, message); // best-effort：失败不影响落库
+    } catch (err) {
+      // DO Alarm 失败不能丢失原始传感器数据：回写状态，下一窗口重试
+      console.error('[routerhook-do] alarm error:', err && err.stack ? err.stack : err);
+      const current = (await this.storage.get('agg')) || { sensors: {}, windowStart: 0 };
+      sensors.forEach((s) => { current.sensors[s.event + '|' + (s.unit || '')] = s; });
+      if (!current.windowStart) current.windowStart = state.windowStart;
+      await this.storage.put('agg', current);
+      await this.storage.setAlarm(Date.now() + this.windowMs());
+    }
+  }
+}
+
+const VERSION = '1.8.0';
 
 export default {
   async fetch(request, env) {
@@ -2184,6 +2568,95 @@ export default {
             }
           : await parseBody(request);
         return await serverchanSend(env, key, data);
+      }
+
+      // ===================== RouterHook 专用接收接口 =====================
+      // POST /api/routerhook/{event}?device=XXX
+      // RouterHook 的 sender.sh 用 `grep "success"` 判定推送成功，因此响应体必须含 "success"。
+      // 普通事件（manuINFO/cronINFO/ifUP/newDHCP）立即落库；rh_* 传感器进入 DO 聚合窗口。
+      const rhMatch = path.match(/^\/api\/routerhook\/([^/]+)$/);
+      if (rhMatch && method === 'POST') {
+        let event;
+        try { event = decodeURIComponent(rhMatch[1]); } catch (_) { event = rhMatch[1]; }
+        // 事件名白名单：字母数字下划线短横线（rh_dev_<mac> 去冒号后符合）
+        if (!/^[A-Za-z0-9_-]{1,80}$/.test(event)) {
+          return json({ ok: false, error: 'invalid event' }, 400);
+        }
+
+        // 严格 JSON 解析：非法 JSON 必须 400（parseBody 会吞错返回 {}，这里不能复用）
+        const rawText = await request.text();
+        if (!rawText || !rawText.trim()) return json({ ok: false, error: 'empty json body' }, 400);
+        let rhBody;
+        try { rhBody = JSON.parse(rawText); } catch (_) { return json({ ok: false, error: 'invalid json' }, 400); }
+        if (!rhBody || typeof rhBody !== 'object' || Array.isArray(rhBody)) {
+          return json({ ok: false, error: 'invalid json object' }, 400);
+        }
+
+        // 鉴权：复用现有发送密钥体系（X-Token / Authorization Bearer / body token / query token）
+        if (!(await hasSendPermission(request, url, env, rhBody))) {
+          return json({ ok: false, error: 'unauthorized' }, 401);
+        }
+
+        const device = rhResolveDevice(event, rhBody, url);
+        const msgType = rhText(rhBody.msgTYPE);
+        let formatted;
+        let aggregated = false;
+
+        if (event.indexOf('rh_') === 0 || (!msgType && Object.prototype.hasOwnProperty.call(rhBody, 'state'))) {
+          // 传感器：body 无 msgTYPE，靠 URL 路径识别；优先用 msgTYPE 作为事件名（若存在）
+          const sensorEvent = event.indexOf('rh_') === 0 ? event : ('rh_' + event);
+          const sensor = parseRhSensor(sensorEvent, rhBody);
+          sensor.device = device.key;
+          const stub = env.ROUTERHOOK_SENSOR;
+          if (stub && typeof stub.idFromName === 'function') {
+            const id = stub.idFromName(device.key);
+            await stub.get(id).fetch(new Request('https://routerhook-do/ingest', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sensor, device: device.key }),
+            }));
+            aggregated = true;
+            formatted = null; // 由 DO Alarm 到期后生成汇总
+          } else {
+            // DO 未绑定：降级为立即单条通知，保证数据不丢失
+            formatted = formatRhSensorSingle(sensor, device);
+          }
+        } else if (msgType === 'manuINFO' || event === 'manuINFO') {
+          formatted = formatRhStatus(rhBody, device, false);
+        } else if (msgType === 'cronINFO' || event === 'cronINFO') {
+          formatted = formatRhStatus(rhBody, device, true);
+        } else if (msgType === 'ifUP' || event === 'ifUP') {
+          formatted = formatRhIfUp(rhBody, device);
+        } else if (msgType === 'newDHCP' || event === 'newDHCP') {
+          formatted = formatRhNewDhcp(rhBody, device);
+        } else {
+          // 未知事件：通用接收，不丢弃有效数据
+          formatted = formatRhUnknown(event, rhBody, device);
+        }
+
+        let wecom = { configured: false, ok: false, skipped: true };
+        let data = null;
+        if (formatted) {
+          const message = await saveMessage(env, {
+            title: formatted.title,
+            content: formatted.content,
+            type: 'text',
+            source: formatted.source,
+          });
+          wecom = await pushToWecom(env, message); // best-effort
+          data = { pushid: message.id, timestamp: message.timestamp, source: formatted.source };
+        }
+        // RouterHook sender.sh 判定成功的唯一依据是响应体包含 "success"
+        return json({
+          ok: true,
+          success: 'success',
+          code: 0,
+          errno: 0,
+          message: 'success',
+          aggregated,
+          data,
+          wecom,
+        });
       }
 
       return json({ ok: false, error: 'not found' }, 404);

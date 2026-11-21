@@ -15,6 +15,27 @@ compatibility_date = "2026-11-16"
 APP_NAME = "Cloudflare Notify"
 
 #: ─────────────────────────────────────────────────────────────
+#: RouterHook 传感器聚合 Durable Object（v1.8 新增）
+#: 作用：高频 rh_* 传感器按设备独立聚合，固定 60 秒窗口生成一条汇总通知，
+#:       避免逐条刷屏、避免企业微信被高频消息轰炸。
+#: Worker 代码中通过 env.ROUTERHOOK_SENSOR.idFromName(设备标识) 访问。
+#: Dashboard 部署：Settings → Bindings → Add → Durable Object →
+#:       Variable name 填 ROUTERHOOK_SENSOR，Durable Object class 选 RouterHookSensorDO。
+#:       ⚠ 若未绑定，传感器会降级为逐条即时通知（数据不丢失，但会刷屏）。
+#: 聚合窗口：可选变量 ROUTERHOOK_WINDOW_SECONDS = 30 / 60 / 120（默认 60）。
+#: ─────────────────────────────────────────────────────────────
+[[durable_objects.bindings]]
+name = "ROUTERHOOK_SENSOR"
+class_name = "RouterHookSensorDO"
+
+#: Durable Object 迁移（首次部署必须保留；后续升级不要删除已有 tag）
+#: 注意：部分账户（如本项目账户）已不支持旧式 new_classes，必须用 new_sqlite_classes。
+#: Dashboard 在线部署时由平台自动处理迁移；wrangler 部署按此配置。
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RouterHookSensorDO"]
+
+#: ─────────────────────────────────────────────────────────────
 #: KV 命名空间说明（重要）
 #: 为了让「从 GitHub 导入 → 一次部署成功 → 页面能打开」，这里刻意
 #: 不写 KV 绑定。KV 的 ID 是每人账户独有的占位符，若把假 ID 写进来，

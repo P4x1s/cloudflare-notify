@@ -19,6 +19,7 @@
 | 即时查看 | Web 页面每 5 秒自动轮询，无需手动刷新 |
 | 通知折叠 | 折叠时显示**标题 + 内容摘要**（两行），不用展开也能读到正文；点击展开看全文，支持全部展开/折叠 |
 | **富文本通知** | 推送正文支持有限 HTML 渲染（加粗/链接/换行/列表/代码块/引用/标题），服务端白名单消毒防 XSS；纯文本消息保留原始换行，展示风格统一 |
+| **RouterHook 全兼容（v1.8）** | 专用接口 `/api/routerhook/{event}` 完整支持手动/定时/重拨/新设备上线与全部虚拟传感器；中文摘要 + 完整原始 JSON；高频传感器经 Durable Object 按设备独立聚合（固定 60 秒窗口），企业微信只收汇总消息不刷屏。详见 [docs/ROUTERHOOK.md](docs/ROUTERHOOK.md) |
 | 统一面板布局 | 整页一个外框，内部用发丝线分区，不再是四张各自浮起的卡片 |
 | 密钥分层与轮换 | `SEND_TOKEN` 为管理主密钥（只用于后台轮换），另有可一键随机生成的**轮换推送密钥**填给软件；换后旧密钥立即失效 |
 | 三种安全传参 | 密钥可放 Header（`X-Token` / `Authorization: Bearer`）、POST body 或 URL，避免密钥进入 URL 历史与日志 |
@@ -65,11 +66,14 @@ cloudflare-notify/
 │   ├── utils.js         # 响应封装、安全响应头、Token 提取、会话 Cookie
 │   └── ui.html          # 通知查看页面（内嵌进 Worker，无外部静态资源）
 ├── examples/            # 通用发送脚本（Python，零依赖）
-├── docs/                # README / Release 用界面截图
+│   ├── notify.py            # 通用发送示例
+│   └── routerhook-test.sh   # RouterHook 接入一键自测脚本（v1.8）
+├── docs/                # 界面截图 + RouterHook 接入教程
+│   ├── ROUTERHOOK.md                  # ★ RouterHook 完整中文接入教程（v1.8）
 │   ├── screenshot-notifications.png   # 通知中心（折叠态）
 │   ├── screenshot-expanded.png        # 单条展开（完整正文）
 │   └── screenshot-login.png           # 未鉴权时的独立登录页
-├── wrangler.toml        # Cloudflare Workers 配置
+├── wrangler.toml        # Cloudflare Workers 配置（含 Durable Object 绑定与迁移）
 ├── package.json         # 依赖与脚本
 ├── .dev.vars.example    # 本地环境变量模板
 ├── .gitignore
@@ -78,7 +82,9 @@ cloudflare-notify/
 └── README.md
 ```
 
-设计取舍：把 UI 作为文本导入内嵌到 Worker 中，整个服务只有 **一个 Worker + 一个 KV**，没有 Pages 项目、没有构建步骤、没有数据库，部署与迁移成本最低。
+设计取舍：把 UI 作为文本导入内嵌到 Worker 中，核心服务只有 **一个 Worker + 一个 KV**，没有 Pages 项目、没有构建步骤、没有数据库，部署与迁移成本最低。v1.8 起为 RouterHook 传感器聚合额外增加 **一个 Durable Object 绑定**（`ROUTERHOOK_SENSOR`）；不接 RouterHook 的话，即使不配该绑定也能正常使用原有全部功能（传感器会降级为逐条通知）。
+
+> **RouterHook 接入请以单文件 `worker.js` 为准**（`src/` 是历史参考实现，功能滞后，不参与部署）。完整教程见 [docs/ROUTERHOOK.md](docs/ROUTERHOOK.md)。
 
 ---
 
@@ -102,6 +108,7 @@ cloudflare-notify/
 | `GET` | `/api/messages?limit=50&version=...` | `READ_TOKEN` 或会话 Cookie | 获取通知列表；带 `version` 且无变化时只返回 `unchanged` |
 | `GET` | `/api/count` | `READ_TOKEN` 或会话 Cookie | 通知总数 |
 | `POST` | `/api/clear` | `READ_TOKEN` 或会话 Cookie | 清空全部通知 |
+| `POST` | `/api/routerhook/{event}?device=<设备>` | 轮换密钥或 SEND_TOKEN | **RouterHook 专用接收接口**（v1.8）。`event` 支持 `manuINFO`/`cronINFO`/`ifUP`/`newDHCP`/`rh_*` 传感器及未知事件；响应体含 `success` 供路由器判定。详见 [docs/ROUTERHOOK.md](docs/ROUTERHOOK.md) |
 
 > **会话 Cookie 机制（v1.4.0）**：配置 `READ_TOKEN` 后，页面访问与只读 API 需要凭据。登录流程是
 > `POST /api/login {"token":"<READ_TOKEN>"}` → 服务端校验通过后下发 `Set-Cookie: cfn_session=...`
