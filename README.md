@@ -1,5 +1,7 @@
 # Cloudflare Notify
 
+> 个人及非营利用途免费（PolyForm Noncommercial 1.0.0）；公司、团体及商业用途请联系 <https://github.com/P4x1s> 获取商业授权。
+
 一个参考「方糖 / ServerChan」思路的最小通知工具：部署在 **Cloudflare Workers** 上，用一个 URL 或一次 API 调用发送消息，打开网页即可查看，无需自建服务器。
 
 零成本核心：Workers 免费额度 + KV 免费额度 + 免费自定义域名 + 免费 SSL。
