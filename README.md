@@ -127,7 +127,7 @@ cloudflare-notify/
 
 ### 3.2 发送消息
 
-> 平台内置**「推送接入」多方式面板**：登录网页后左侧栏可切换 8 种接入方式（URL 直发、JSON API、表单 API、方糖/Server酱、Python、Node.js、CI/定时、RouterHook），每种都有可直接复制的示例，并自动填入当前轮换密钥与站点域名。下方各节是对应的完整说明。
+> 平台内置**「推送接入」多方式面板**：登录网页后左侧栏可切换 9 种接入方式（URL 直发、JSON API、表单 API、方糖/Server酱、Python、Node.js、CI/定时、RouterHook、变量模板），每种都有可直接复制的示例，并自动填入当前轮换密钥与站点域名。下方各节是对应的完整说明。
 
 **方式 A：URL 直发（快捷指令 / 浏览器书签 / 只能填 URL 的软件）**
 
@@ -180,6 +180,62 @@ POST body 的 token 字段     ← 推荐：同上
 ```
 
 **失败响应**：HTTP 401 `{"ok":false,"error":"invalid token"}`；HTTP 400 表示标题和内容都为空。
+
+### 3.2.1 变量模板（动态内容，v1.9+）
+
+在 `title` / `content` 里写 `{名称}` 占位符，服务端在落库前自动替换。三种发送方式（URL 直发、JSON API、方糖）都支持。
+
+**你给的例子**（标题由调用方提供、正文自动带时间）：
+
+```
+GET https://你的域名/send?token=<密钥>&title={title}&content={time}&source=ci&v.title=构建完成
+```
+
+发出后实际落库：`标题=构建完成`、`正文=<当前时间>`、`来源=ci`。空格与中文需做 URL 编码（如 `%20`）。
+
+**内置变量**（服务端生成，时间按 **GMT+8 / 北京时间**，无需额外参数）
+
+| 占位符 | 含义 | 示例 |
+| --- | --- | --- |
+| `{date}` | 日期 | `2026-11-26` |
+| `{time}` | 时间 | `14:22:33` |
+| `{datetime}` | 日期+时间 | `2026-11-26 14:22:33` |
+| `{timestamp}` | 秒级 Unix 时间戳 | `1764147753` |
+| `{timestamp_ms}` | 毫秒级 Unix 时间戳 | `1764147753123` |
+| `{weekday}` | 中文星期 | `星期四` |
+| `{uuid}` | 随机 UUID | `9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d` |
+| `{random}` | 8 位随机串 | `a3f9k2lm` |
+| `{version}` | 服务版本号 | `1.9.0` |
+| `{source}` | 当前消息来源字段 | `ci` |
+
+**自定义变量**（调用方传值，替换同名占位符；**优先于内置变量**）
+
+- URL 直发 / 方糖：`&v.名称=值` 或 `&var.名称=值`
+- JSON API：扁平 `"v.名称": "值"` 或嵌套 `"v": { "名称": "值" }`
+
+```
+# 扁平写法
+curl -G "https://你的域名/send" \
+  --data-urlencode "token=<密钥>" \
+  --data-urlencode "title={title}" \
+  --data-urlencode "content={date} {time} 构建结果：{result}" \
+  --data-urlencode "v.title=CI 构建" \
+  --data-urlencode "v.result=成功"
+
+# JSON 嵌套写法（密钥走 Header）
+curl -X POST "https://你的域名/api/send" -H "X-Token: <密钥>" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"{title}","content":"{date} {time}","v":{"title":"CI 构建"}}'
+```
+
+**行为规则**
+
+- 名称仅限字母、数字、下划线，且以字母/下划线开头（`v.` 后的部分）。
+- **自定义覆盖内置**：传 `v.date=2026-01-01` 后 `{date}` 用自定义值（便于填业务日期）。
+- **单次替换**：替换值里再写 `{xxx}` 不会被二次解析，避免递归注入。
+- **未匹配原样保留**：`{unknown}` 没有对应值时保留字面文本，正文里的 JSON 花括号不会被破坏。
+- 变量值去掉控制字符、上限 500 字；富文本仍经过既有白名单消毒，XSS 防护不变。
+- 不写任何 `{...}` 的请求开销为零，旧客户端行为完全不变。
 
 ### 3.3 密钥分层、轮换与安全加固
 

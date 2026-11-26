@@ -674,6 +674,18 @@ const UI_HTML = `<!DOCTYPE html>
           '  -H "X-Token: ' + k + '" \\\n' +
           '  -d \\'{"msgTYPE":"manuINFO","desc":"WAN 重拨完成"}\\'';
       }
+    },
+    {
+      id: 'vars', label: '变量模板',
+      name: '⑨ 动态变量：内置 + 自定义',
+      scene: '适用：定时巡检、CI 构建、或想让软件把标题/正文动态填入模板的场景。',
+      note: '内置变量由服务端按 GMT+8 自动生成：date/time/datetime/timestamp/timestamp_ms/weekday/uuid/random/version/source；自定义变量用 v.名称=值（或 JSON body 的 v 对象）提供，同名时覆盖内置。未匹配占位符原样保留，替换值不再二次解析；空格与中文请做 URL 编码。',
+      code: function (o, k) {
+        return o + '/send?token=' + k + '&title={title}&content={date}%20{time}&source=ci&v.title=Build%20Done\\n' +
+          '\\n' +
+          '# 只用内置变量（无需 v.* 参数）：\\n' +
+          o + '/send?token=' + k + '&title=check&content={datetime}%20OK';
+      }
     }
   ];
 
@@ -2374,9 +2386,96 @@ async function parseBody(request) {
   }
 }
 
+/**
+ * 变量标签渲染：把文本里的 {name} 占位符替换为实际值。
+ * - 内置变量（服务端生成，时区 GMT+8，与用户所在时区一致）：
+ *     {date} YYYY-MM-DD、{time} HH:MM:SS、{datetime} YYYY-MM-DD HH:MM:SS、
+ *     {timestamp} 秒级 Unix、{timestamp_ms} 毫秒级、{weekday} 中文星期、
+ *     {uuid} 随机 UUID、{random} 8 位随机串、{version} 版本号、{source} 来源标识。
+ * - 自定义变量：调用方用 v.<name> 或 var.<name> 参数传入，如 &v.title=构建完成；
+ *   自定义值优先于同名内置变量，允许覆盖（如 {date} 传业务日期）。
+ * - 单次替换：替换值里的 { } 不会被二次解析，避免递归注入。
+ * - 未匹配占位符原样保留，保证正文里字面花括号（如 JSON 片段）不被破坏。
+ * - 自定义值长度上限，防止滥用；移除控制字符，降低注入风险。
+ */
+const VAR_BUILTIN = Object.freeze({
+  date: (d) => fmt8(d, 'date'),
+  time: (d) => fmt8(d, 'time'),
+  datetime: (d) => fmt8(d, 'datetime'),
+  timestamp: (d) => String(Math.floor(d.getTime() / 1000)),
+  timestamp_ms: (d) => String(d.getTime()),
+  weekday: (d) => '星期' + '日一二三四五六'[shift8(d).getUTCDay()],
+  uuid: () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : generateId(),
+  random: () => Math.random().toString(36).slice(2, 10).padEnd(8, '0'),
+  version: () => VERSION,
+});
+const VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const VAR_TOKEN_RE = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+const VAR_VALUE_MAX = 500;
+
+/** 把 Date 换算到 GMT+8 后取 UTC 字段（Workers 恒定 UTC，手动平移避免依赖运行环境时区） */
+function shift8(date) {
+  return new Date(date.getTime() + 8 * 3600 * 1000);
+}
+function fmt8(date, kind) {
+  const d = shift8(date);
+  const p = (n) => String(n).padStart(2, '0');
+  const ymd = d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+  const hms = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
+  return kind === 'date' ? ymd : kind === 'time' ? hms : ymd + ' ' + hms;
+}
+
+/** 自定义变量值安全化：去控制字符、限长 */
+function sanitizeVarValue(val) {
+  if (val == null) return null;
+  return String(val).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, VAR_VALUE_MAX);
+}
+
+/**
+ * 提取调用方自定义变量，支持两种写法（后者优先）：
+ *   扁平：v.<name> / var.<name>（URL query 与 JSON body 都适用）
+ *   嵌套：JSON body 里的 "v": { "<name>": "..." } 或 "var": { ... }
+ */
+function collectCustomVars(data) {
+  const out = {};
+  if (!data || typeof data !== 'object') return out;
+  for (const ns of ['v', 'var']) {
+    const group = data[ns];
+    if (group && typeof group === 'object' && !Array.isArray(group)) {
+      for (const key of Object.keys(group)) {
+        if (!VAR_NAME_RE.test(key)) continue;
+        const val = sanitizeVarValue(group[key]);
+        if (val !== null) out[key] = val;
+      }
+    }
+  }
+  for (const key of Object.keys(data)) {
+    const m = /^(?:v|var)\.([A-Za-z_][A-Za-z0-9_]*)$/.exec(key);
+    if (!m) continue;
+    const val = sanitizeVarValue(data[key]);
+    if (val !== null) out[m[1]] = val;
+  }
+  return out;
+}
+
+/** 渲染一段文本：内置变量 + 自定义变量，单次替换、未匹配原样保留 */
+function renderVars(text, data, now) {
+  const src = String(text == null ? '' : text);
+  if (src.indexOf('{') === -1) return src; // 无占位符：零开销直通
+  const custom = collectCustomVars(data);
+  return src.replace(VAR_TOKEN_RE, (full, name) => {
+    if (!VAR_NAME_RE.test(name)) return full;
+    if (Object.prototype.hasOwnProperty.call(custom, name)) return custom[name];
+    if (name === 'source') return String((data && data.source) || 'api');
+    if (Object.prototype.hasOwnProperty.call(VAR_BUILTIN, name)) return VAR_BUILTIN[name](now);
+    return full;
+  });
+}
+
 async function createMessage(env, data) {
-  const title = String(data.title || data.text || '').trim();
-  const content = String(data.content || data.desp || data.body || '').trim();
+  const now = new Date();
+  const title = renderVars(String(data.title || data.text || '').trim(), data, now);
+  const content = renderVars(String(data.content || data.desp || data.body || '').trim(), data, now);
   if (!title && !content) {
     return json({ ok: false, error: 'title 或 content 至少填写一个' }, 400);
   }
@@ -2405,8 +2504,9 @@ async function serverchanSend(env, key, data) {
   if (key !== master && !(Boolean(current) && key === current)) {
     return json({ code: 1, errno: 1, errmsg: 'key 错误', message: 'invalid key' }, 401);
   }
-  const title = String(data.title || data.text || '').trim();
-  const desp = String(data.desp || data.content || data.body || '').trim();
+  const now = new Date();
+  const title = renderVars(String(data.title || data.text || '').trim(), data, now);
+  const desp = renderVars(String(data.desp || data.content || data.body || '').trim(), data, now);
   if (!title && !desp) {
     return json({ code: 1, errno: 1, errmsg: '标题或正文不能为空', message: 'empty content' }, 400);
   }
@@ -2507,7 +2607,7 @@ export class RouterHookSensorDO extends DOBase {
   }
 }
 
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 
 export default {
   async fetch(request, env) {
@@ -2704,12 +2804,11 @@ export default {
         if (!(await hasSendPermission(request, url, env))) {
           return json({ ok: false, error: 'invalid token' }, 401);
         }
-        return await createMessage(env, {
-          title: url.searchParams.get('title') || url.searchParams.get('text') || '',
-          content: url.searchParams.get('content') || url.searchParams.get('desp') || '',
-          type: url.searchParams.get('type') || 'text',
-          source: url.searchParams.get('source') || 'url',
-        });
+        // 传入全部 query 参数，使 v.<name> / var.<name> 自定义变量一并进入渲染层；
+        // title/content 的字段别名兼容逻辑仍在 createMessage 内统一处理。
+        const data = Object.fromEntries(url.searchParams.entries());
+        if (!data.source) data.source = 'url';
+        return await createMessage(env, data);
       }
 
       // 测试企业微信 Webhook 连通性
@@ -2750,11 +2849,9 @@ export default {
       if (sendMatch && (method === 'GET' || method === 'POST')) {
         const key = decodeURIComponent(sendMatch[1]);
         const data = method === 'GET'
-          ? {
-              title: url.searchParams.get('title') || url.searchParams.get('text') || '',
-              desp: url.searchParams.get('desp') || url.searchParams.get('content') || '',
+          ? Object.assign(Object.fromEntries(url.searchParams.entries()), {
               source: url.searchParams.get('source') || 'serverchan',
-            }
+            })
           : await parseBody(request);
         return await serverchanSend(env, key, data);
       }
