@@ -591,7 +591,7 @@ const UI_HTML = `<!DOCTYPE html>
         return 'curl -X POST "' + o + '/api/send" \\\n' +
           '  -H "Content-Type: application/json" \\\n' +
           '  -H "X-Token: ' + k + '" \\\n' +
-          '  -d \'{"title":"构建完成","content":"耗时 23s"}\'';
+          '  -d \\'{"title":"构建完成","content":"耗时 23s"}\\'';
       }
     },
     {
@@ -621,13 +621,13 @@ const UI_HTML = `<!DOCTYPE html>
       scene: '适用：运维脚本、备份任务、数据采集后推送。用 requests 或标准库 urllib。',
       note: '用 Header 传 token，避免密钥进入 URL。requests 未安装时可用 urllib.request 替代。',
       code: function (o, k) {
-        return '# pip install requests\n' +
-          'import requests\n\n' +
-          'r = requests.post(\n' +
-          '    "' + o + '/api/send",\n' +
-          '    headers={"X-Token": "' + k + '", "Content-Type": "application/json"},\n' +
-          '    json={"title": "构建完成", "content": "耗时 23s"},\n' +
-          ')\n' +
+        return '# pip install requests\\n' +
+          'import requests\\n\\n' +
+          'r = requests.post(\\n' +
+          '    "' + o + '/api/send",\\n' +
+          '    headers={"X-Token": "' + k + '", "Content-Type": "application/json"},\\n' +
+          '    json={"title": "构建完成", "content": "耗时 23s"},\\n' +
+          ')\\n' +
           'print(r.status_code, r.json())';
       }
     },
@@ -637,11 +637,11 @@ const UI_HTML = `<!DOCTYPE html>
       scene: '适用：Node 服务、npm 脚本、Serverless 函数中调用。无需额外依赖，用内置 fetch。',
       note: 'Node 18+ 内置 fetch；更低版本可用 node-fetch 或 https 模块。',
       code: function (o, k) {
-        return 'const r = await fetch("' + o + '/api/send", {\n' +
-          '  method: "POST",\n' +
-          '  headers: { "Content-Type": "application/json", "X-Token": "' + k + '" },\n' +
-          '  body: JSON.stringify({ title: "构建完成", content: "耗时 23s" }),\n' +
-          '});\n' +
+        return 'const r = await fetch("' + o + '/api/send", {\\n' +
+          '  method: "POST",\\n' +
+          '  headers: { "Content-Type": "application/json", "X-Token": "' + k + '" },\\n' +
+          '  body: JSON.stringify({ title: "构建完成", content: "耗时 23s" }),\\n' +
+          '});\\n' +
           'console.log(r.status, await r.json());';
       }
     },
@@ -651,14 +651,14 @@ const UI_HTML = `<!DOCTYPE html>
       scene: '适用：构建完成、部署成功、备份结果、定时巡检推送到企业微信。',
       note: 'CI 里把密钥存进 Secrets，不要写死在 YAML；crontab 里用 % 需转义。两种写法都调用同一个 /send 端点。',
       code: function (o, k) {
-        return '# GitHub Actions（把密钥放进 Secrets.SEND_TOKEN）\n' +
-          '- name: 发送通知\n' +
-          '  run: |\n' +
+        return '# GitHub Actions（把密钥放进 Secrets.SEND_TOKEN）\\n' +
+          '- name: 发送通知\\n' +
+          '  run: |\\n' +
           '    curl -sG "' + o + '/send" \\\n' +
           '      --data-urlencode "token=\${{ secrets.SEND_TOKEN }}" \\\n' +
           '      --data-urlencode "title=构建完成" \\\n' +
-          '      --data-urlencode "content=分支已部署"\n\n' +
-          '# Linux crontab：每 5 分钟推送一次\n' +
+          '      --data-urlencode "content=分支已部署"\\n\\n' +
+          '# Linux crontab：每 5 分钟推送一次\\n' +
           '*/5 * * * * curl -sG "' + o + '/send" --data-urlencode "token=' + k + '" \\\n' +
           '  --data-urlencode "title=定时巡检" --data-urlencode "content=服务正常"';
       }
@@ -672,7 +672,7 @@ const UI_HTML = `<!DOCTYPE html>
         return 'curl -X POST "' + o + '/api/routerhook/manuINFO?device=RAX50" \\\n' +
           '  -H "Content-Type: application/json" \\\n' +
           '  -H "X-Token: ' + k + '" \\\n' +
-          '  -d \'{"msgTYPE":"manuINFO","desc":"WAN 重拨完成"}\'';
+          '  -d \\'{"msgTYPE":"manuINFO","desc":"WAN 重拨完成"}\\'';
       }
     }
   ];
