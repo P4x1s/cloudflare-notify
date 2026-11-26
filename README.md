@@ -2,9 +2,13 @@
 
 > 个人及非营利用途免费（PolyForm Noncommercial 1.0.0）；公司、团体及商业用途请联系 <https://github.com/P4x1s> 获取商业授权。
 
-一个参考「方糖 / ServerChan」思路的最小通知工具：部署在 **Cloudflare Workers** 上，用一个 URL 或一次 API 调用发送消息，打开网页即可查看，无需自建服务器。
+**一个完全自研、单文件部署的 Cloudflare Workers 通知中心。** 把 `worker.js` 放进一个 Worker、绑定一个 KV，就拥有一套属于自己的推送服务：实时收件网页、密钥分层与一键轮换、企业微信群机器人转发、富文本消息、RouterHook 路由器事件聚合、变量模板——**不依赖任何第三方通知平台，也不需要服务器、数据库或构建步骤**。
+
+**关于「方糖 / Server酱」**：本项目从零自研，不是它们的分支，也不是二次开发。文档中出现的 `/<key>.send?text=&desp=` 地址，只是本服务**主动提供的一个兼容接入端点**，目的是让原本只会填这类 URL 的软件无需改造就能迁移到你的自有域名。兼容的是调用格式，不是项目来源；完全不用它，只用 `/send` 或 `/api/send`，所有功能一样可用。
 
 零成本核心：Workers 免费额度 + KV 免费额度 + 免费自定义域名 + 免费 SSL。
+
+**设计目标**：① 单文件、无构建，复制一个 `worker.js` 就能跑；② 数据留在自己的 KV，不经过任何第三方中转；③ 发送端极简（任意语言一条 HTTP 请求），查看端自带鉴权与美观界面；④ 免费额度内长期可用，靠增量检查与聚合把请求/写入量压到最低。
 
 ![通知中心界面](docs/screenshot-notifications.png)
 
@@ -17,7 +21,7 @@
 | 能力 | 说明 |
 | --- | --- |
 | URL 发消息 | `GET /send?token=...&title=...&content=...`，浏览器、curl、快捷指令、Webhook 都能用 |
-| API 发消息 | `POST /api/send`，支持 JSON 与表单，兼容方糖的 `title` / `desp` 字段 |
+| API 发消息 | `POST /api/send`，支持 JSON 与表单，另接受 `text` / `desp` 等别名字段方便各类脚本接入 |
 | 即时查看 | Web 页面每 5 秒自动轮询，无需手动刷新 |
 | 通知折叠 | 折叠时显示**标题 + 内容摘要**（两行），不用展开也能读到正文；点击展开看全文，支持全部展开/折叠 |
 | **富文本通知** | 推送正文支持有限 HTML 渲染（加粗/链接/换行/列表/代码块/引用/标题），服务端白名单消毒防 XSS；纯文本消息保留原始换行，展示风格统一 |
@@ -29,6 +33,7 @@
 | **服务端鉴权页面** | 配置 `READ_TOKEN` 后，未验证的请求**只会拿到最小登录页**——里面根本没有推送地址与密钥 DOM，删掉任何遮罩也看不到 |
 | **HttpOnly 会话 Cookie** | 验证通过签发 HMAC 签名的会话 Cookie（7 天），密钥不落 localStorage，JS/XSS 都读不到；改 `READ_TOKEN` 会让旧会话立即失效 |
 | **Turnstile 人机验证** | 可选开启（默认关闭）。登录接口增加 Cloudflare Turnstile 挑战，**服务端 Siteverify 校验**（不信任前端 token），防暴力破解与脚本自动化 |
+| **变量模板（v1.9）** | 正文/标题支持 `{date}` `{time}` `{source}` 等内置变量与自定义 `v.名称`，服务端落库前单次替换；CI、定时任务可让标题/正文自动带时间与来源。详见 [3.2.1](#321-变量模板动态内容-v19) |
 | 自定义域名 | Cloudflare 控制台一键绑定，自动签发证书 |
 | 安全响应头 | 已设 CSP、nosniff、Referrer-Policy、X-Frame-Options、Permissions-Policy；CORS 默认收紧为同源 |
 
@@ -103,7 +108,7 @@ cloudflare-notify/
 | `GET` | `/send` | 轮换密钥或 SEND_TOKEN | **通过 URL 发送消息（最简方式）** |
 | `POST` | `/send` | 轮换密钥或 SEND_TOKEN | 表单发送消息 |
 | `POST` | `/api/send` | 轮换密钥或 SEND_TOKEN | JSON / 表单发送消息（密钥可放 Header/body/query） |
-| `GET` / `POST` | `/<key>.send` | key 为轮换密钥或 SEND_TOKEN | **方糖 / Server酱 兼容端点**，`text`/`title`=标题，`desp`=正文；返回 `errno` 与 `code` 双码 |
+| `GET` / `POST` | `/<key>.send` | key 为轮换密钥或 SEND_TOKEN | **兼容端点**（给只会填旧式 URL 的软件迁移用），`text`/`title`=标题，`desp`=正文；返回 `errno` 与 `code` 双码 |
 | `POST` | `/api/key/rotate` | **仅** SEND_TOKEN（管理主密钥） | 生成新轮换密钥并写入 KV，旧密钥立即失效；返回 `{ key }` |
 | `GET` | `/api/key/current` | **仅** SEND_TOKEN | 查看当前轮换密钥 |
 | `POST` | `/api/test-wecom` | 轮换密钥或 SEND_TOKEN | 测试企业微信 Webhook 连通性 |
@@ -127,7 +132,7 @@ cloudflare-notify/
 
 ### 3.2 发送消息
 
-> 平台内置**「推送接入」多方式面板**：登录网页后左侧栏可切换 9 种接入方式（URL 直发、JSON API、表单 API、方糖/Server酱、Python、Node.js、CI/定时、RouterHook、变量模板），每种都有可直接复制的示例，并自动填入当前轮换密钥与站点域名。下方各节是对应的完整说明。
+> 平台内置**「推送接入」多方式面板**：登录网页后左侧栏可切换 9 种接入方式（URL 直发、JSON API、表单 API、兼容端点、Python、Node.js、CI/定时、RouterHook、变量模板），每种都有可直接复制的示例，并自动填入当前轮换密钥与站点域名。下方各节是对应的完整说明。
 
 **方式 A：URL 直发（快捷指令 / 浏览器书签 / 只能填 URL 的软件）**
 
@@ -135,7 +140,7 @@ cloudflare-notify/
 GET https://你的域名/send?token=<轮换密钥>&title=标题&content=正文
 ```
 
-字段别名（兼容方糖习惯）：`title` 可写作 `text`，`content` 可写作 `desp`。
+字段别名（方便各类脚本与旧客户端迁移）：`title` 可写作 `text`，`content` 可写作 `desp`。
 
 ```
 curl "https://你的域名/send?token=<轮换密钥>&title=构建完成&content=耗时%2023s&source=github-actions"
@@ -183,7 +188,7 @@ POST body 的 token 字段     ← 推荐：同上
 
 ### 3.2.1 变量模板（动态内容，v1.9+）
 
-在 `title` / `content` 里写 `{名称}` 占位符，服务端在落库前自动替换。三种发送方式（URL 直发、JSON API、方糖）都支持。
+在 `title` / `content` 里写 `{名称}` 占位符，服务端在落库前自动替换。三种发送方式（URL 直发、JSON API、兼容端点）都支持。
 
 **你给的例子**（标题由调用方提供、正文自动带时间）：
 
@@ -210,7 +215,7 @@ GET https://你的域名/send?token=<密钥>&title={title}&content={time}&source
 
 **自定义变量**（调用方传值，替换同名占位符；**优先于内置变量**）
 
-- URL 直发 / 方糖：`&v.名称=值` 或 `&var.名称=值`
+- URL 直发 / 兼容端点：`&v.名称=值` 或 `&var.名称=值`
 - JSON API：扁平 `"v.名称": "值"` 或嵌套 `"v": { "名称": "值" }`
 
 ```
@@ -272,7 +277,7 @@ curl "https://你的域名/api/key/current" -H "X-Token: <SEND_TOKEN>"
 5. **绑定自定义域名 + HTTPS**：走自己的域名，避免 `workers.dev` 的不稳定与中间环节；Cloudflare 自动签发免费证书。
 6. **控制查看权限**：设置 `READ_TOKEN`，避免任何人都能读取全部通知内容。
 
-> 仍有边界需要说明：只要软件只能填 URL（方糖类），key 就必然出现在那一条 URL 里，无法做到"密钥完全不进 URL"。能做的上限是「用可随时作废的轮换密钥 + 定期轮换」，把泄露窗口压到最小；签名/HMAC 这类防重放机制对只支持填 URL 的软件无能为力，故本 Demo 未引入。
+> 仍有边界需要说明：只要软件只能填 URL（如旧式推送端点），key 就必然出现在那一条 URL 里，无法做到"密钥完全不进 URL"。能做的上限是「用可随时作废的轮换密钥 + 定期轮换」，把泄露窗口压到最小；签名/HMAC 这类防重放机制对只支持填 URL 的软件无能为力，故本项目未引入。
 
 **平台侧纵深防御（v1.3.1 起，无需配置，已内置）**：
 
