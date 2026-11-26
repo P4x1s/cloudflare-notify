@@ -12,7 +12,7 @@
 
 ![通知中心界面](docs/screenshot-notifications.png)
 
-· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md) · Webhook 接入与演进建议：[WEBHOOK.md](docs/WEBHOOK.md)
 
 ---
 
