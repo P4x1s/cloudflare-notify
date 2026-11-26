@@ -24,7 +24,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # 官方流程要求 wrangler >= 4.109
       - name: Install wrangler
@@ -115,8 +115,11 @@ jobs:
             echo "attempt $i -> HTTP $code"
             if grep -q 'window.TS' /tmp/page.html; then
               echo "::notice::线上已包含 Turnstile 客户端脚本（v1.5+）✓"
+            fi
+            if grep -q 'intgTabs' /tmp/page.html; then
+              echo "::notice::线上已包含多方式推送接入面板（v1.9+）✓"
               exit 0
             fi
             sleep 15
           done
-          echo "::warning::未能在线上页面检测到 v1.5 特征串，请手动核对 Dashboard → Deployments"
+          echo "::warning::未能在线上页面检测到多方式接入面板特征串，请手动核对 Dashboard → Deployments"

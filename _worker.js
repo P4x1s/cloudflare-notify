@@ -214,6 +214,28 @@ const UI_CSS = `
   .hint.box.dashed { border-style: dashed; cursor: pointer; }
   .hint.box.ok { border-color: var(--ok); color: var(--ok); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
+  /* ---------- 推送接入方式切换 ---------- */
+  .intg-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 12px; }
+  .intg-tab {
+    font-size: 11px; padding: 5px 9px; border-radius: 999px;
+    border: var(--line); background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .intg-tab:hover { border-color: var(--primary); color: var(--text); }
+  .intg-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .intg-card { border: var(--line); border-radius: 11px; padding: 12px; background: var(--bg); }
+  .intg-name { font-size: 12.5px; font-weight: 600; margin-bottom: 3px; }
+  .intg-scene { font-size: 11px; color: var(--muted); line-height: 1.6; margin-bottom: 9px; }
+  .intg-code {
+    margin: 0; padding: 10px 11px; border-radius: 8px; border: var(--line);
+    background: rgba(127,127,127,.08); color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+    max-height: 230px; overflow: auto;
+  }
+  .intg-card .hint { margin-top: 8px; }
+  .intg-sep { height: 1px; background: var(--line); margin: 16px 0 14px; }
+  .intg-quick-label { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+
   button {
     font: inherit; cursor: pointer; border-radius: 9px; border: var(--line);
     background: var(--card); color: var(--text); padding: 8px 13px; font-size: 13px;
@@ -421,9 +443,22 @@ const UI_HTML = `<!DOCTYPE html>
         <section class="section">
           <h2>推送接入</h2>
           <p class="sec-desc">
-            把下面这段地址填进任何支持「自定义 Webhook / Server酱 / 方糖」的软件，即可推送到企业微信。
-            key 优先使用<b>轮换推送密钥</b>（泄露后可一键作废）。
+            支持 <b>6 类接入方式</b>：浏览器直发、JSON / 表单 API、方糖 / Server酱、脚本语言、CI 定时任务、RouterHook 路由器。
+            点标签看对应示例，一键复制；示例会自动填入当前轮换密钥。
           </p>
+          <div class="intg-tabs" id="intgTabs"></div>
+          <div class="intg-card">
+            <div class="intg-name" id="intgName"></div>
+            <div class="intg-scene" id="intgScene"></div>
+            <pre class="intg-code" id="intgCode"></pre>
+            <div class="hint" id="intgNote"></div>
+            <div class="row">
+              <button class="ghost" id="btnCopyIntg">复制这段示例</button>
+            </div>
+          </div>
+
+          <div class="intg-sep"></div>
+          <div class="intg-quick-label">方糖 / Server酱 专用地址（可直接粘进软件）</div>
           <div class="hint box dashed" id="scUrl"></div>
           <div class="row">
             <button class="ghost" id="btnCopyScUrl">复制推送地址</button>
@@ -537,6 +572,146 @@ const UI_HTML = `<!DOCTYPE html>
     toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
   }
 
+  // 推送接入示例目录：所有端点与字段别名均与 worker.js 服务端实现一致。
+  // 生成时用 location.origin 与当前轮换密钥，避免写死域名/密钥。
+  var INTEGRATIONS = [
+    {
+      id: 'urlget', label: 'URL 直发',
+      name: '① 浏览器 / 快捷指令：URL 直发（GET）',
+      scene: '适用：地址栏、iOS 快捷指令、只支持 GET 的 Webhook、简单脚本。',
+      note: 'title/text、content/desp 都是等价字段别名；type 可填 text 或 markdown。密钥写在 URL 会进历史与日志，仅建议可信环境使用。',
+      code: function (o, k) { return o + '/send?token=' + k + '&title=构建完成&content=耗时%2023s&source=ci'; }
+    },
+    {
+      id: 'json', label: 'JSON API',
+      name: '② 程序调用：JSON API（POST，推荐）',
+      scene: '适用：Node.js / Python / Go / 任意能发 HTTP 的服务端程序。密钥走 Header，不进 URL。',
+      note: 'Body 支持 title/text、content/desp/body、type、source；返回 { ok:true, code:0, errno:0 }。Header 传参推荐 X-Token 或 Authorization: Bearer。',
+      code: function (o, k) {
+        return 'curl -X POST "' + o + '/api/send" \\\n' +
+          '  -H "Content-Type: application/json" \\\n' +
+          '  -H "X-Token: ' + k + '" \\\n' +
+          '  -d \'{"title":"构建完成","content":"耗时 23s"}\'';
+      }
+    },
+    {
+      id: 'form', label: '表单 API',
+      name: '③ 表单提交：Form API（POST）',
+      scene: '适用：curl、HTML 表单、curl 类工具、不擅长拼 JSON 的脚本。',
+      note: '服务端按 Content-Type 自动解析 application/x-www-form-urlencoded 与 multipart/form-data；密钥同样可放 Header。',
+      code: function (o, k) {
+        return 'curl -X POST "' + o + '/api/send" \\\n' +
+          '  -H "X-Token: ' + k + '" \\\n' +
+          '  --data-urlencode "title=构建完成" \\\n' +
+          '  --data-urlencode "content=耗时 23s"';
+      }
+    },
+    {
+      id: 'serverchan', label: '方糖/Server酱',
+      name: '④ 软件集成：方糖 / Server酱 兼容端点',
+      scene: '适用：只支持 sc.ftqq.com 格式、但允许自定义域名/服务器地址的软件。把 key 放在路径里。',
+      note: 'GET 用 text/title 作标题、desp/content 作正文；POST 用表单。返回同时带 errno（方糖）与 code（Server酱³）双码。写死 sc.ftqq.com 的软件无法迁移。',
+      code: function (o, k) {
+        return o + '/' + encodeURIComponent(k) + '.send?text=构建完成&desp=耗时%2023s';
+      }
+    },
+    {
+      id: 'python', label: 'Python',
+      name: '⑤ 脚本：Python 示例',
+      scene: '适用：运维脚本、备份任务、数据采集后推送。用 requests 或标准库 urllib。',
+      note: '用 Header 传 token，避免密钥进入 URL。requests 未安装时可用 urllib.request 替代。',
+      code: function (o, k) {
+        return '# pip install requests\n' +
+          'import requests\n\n' +
+          'r = requests.post(\n' +
+          '    "' + o + '/api/send",\n' +
+          '    headers={"X-Token": "' + k + '", "Content-Type": "application/json"},\n' +
+          '    json={"title": "构建完成", "content": "耗时 23s"},\n' +
+          ')\n' +
+          'print(r.status_code, r.json())';
+      }
+    },
+    {
+      id: 'node', label: 'Node.js',
+      name: '⑥ 脚本：Node.js 示例',
+      scene: '适用：Node 服务、npm 脚本、Serverless 函数中调用。无需额外依赖，用内置 fetch。',
+      note: 'Node 18+ 内置 fetch；更低版本可用 node-fetch 或 https 模块。',
+      code: function (o, k) {
+        return 'const r = await fetch("' + o + '/api/send", {\n' +
+          '  method: "POST",\n' +
+          '  headers: { "Content-Type": "application/json", "X-Token": "' + k + '" },\n' +
+          '  body: JSON.stringify({ title: "构建完成", content: "耗时 23s" }),\n' +
+          '});\n' +
+          'console.log(r.status, await r.json());';
+      }
+    },
+    {
+      id: 'ci', label: 'CI / 定时',
+      name: '⑦ CI 与定时任务：GitHub Actions / crontab',
+      scene: '适用：构建完成、部署成功、备份结果、定时巡检推送到企业微信。',
+      note: 'CI 里把密钥存进 Secrets，不要写死在 YAML；crontab 里用 % 需转义。两种写法都调用同一个 /send 端点。',
+      code: function (o, k) {
+        return '# GitHub Actions（把密钥放进 Secrets.SEND_TOKEN）\n' +
+          '- name: 发送通知\n' +
+          '  run: |\n' +
+          '    curl -sG "' + o + '/send" \\\n' +
+          '      --data-urlencode "token=\${{ secrets.SEND_TOKEN }}" \\\n' +
+          '      --data-urlencode "title=构建完成" \\\n' +
+          '      --data-urlencode "content=分支已部署"\n\n' +
+          '# Linux crontab：每 5 分钟推送一次\n' +
+          '*/5 * * * * curl -sG "' + o + '/send" --data-urlencode "token=' + k + '" \\\n' +
+          '  --data-urlencode "title=定时巡检" --data-urlencode "content=服务正常"';
+      }
+    },
+    {
+      id: 'routerhook', label: 'RouterHook',
+      name: '⑧ 路由器：RouterHook 事件推送',
+      scene: '适用：RouterHook 插件的 manuINFO / cronINFO / ifUP / newDHCP 与 rh_* 传感器事件。',
+      note: '响应体含 success 字符串，RouterHook 据此判定成功；rh_* 传感器经 Durable Object 按设备聚合（默认 60 秒窗口），企业微信只收汇总不刷屏。多路由器用 ?device= 区分。详见 docs/ROUTERHOOK.md。',
+      code: function (o, k) {
+        return 'curl -X POST "' + o + '/api/routerhook/manuINFO?device=RAX50" \\\n' +
+          '  -H "Content-Type: application/json" \\\n' +
+          '  -H "X-Token: ' + k + '" \\\n' +
+          '  -d \'{"msgTYPE":"manuINFO","desc":"WAN 重拨完成"}\'';
+      }
+    }
+  ];
+
+  var stateIntg = 'urlget';
+
+  function currentKey() {
+    return state.rotatingKey || $('fSendToken').value.trim() || state.sendToken || '<你的密钥>';
+  }
+
+  function renderIntegrations() {
+    var tabs = $('intgTabs');
+    if (!tabs.childNodes.length) {
+      var html = '';
+      for (var i = 0; i < INTEGRATIONS.length; i++) {
+        html += '<button type="button" class="intg-tab' + (INTEGRATIONS[i].id === stateIntg ? ' active' : '') +
+          '" data-intg="' + INTEGRATIONS[i].id + '">' + esc(INTEGRATIONS[i].label) + '</button>';
+      }
+      tabs.innerHTML = html;
+      tabs.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('.intg-tab');
+        if (!btn) return;
+        stateIntg = btn.getAttribute('data-intg');
+        renderIntegrations();
+      });
+    }
+    Array.prototype.forEach.call(tabs.childNodes, function (b) {
+      b.className = 'intg-tab' + (b.getAttribute('data-intg') === stateIntg ? ' active' : '');
+    });
+    var item = INTEGRATIONS[0];
+    for (var j = 0; j < INTEGRATIONS.length; j++) {
+      if (INTEGRATIONS[j].id === stateIntg) { item = INTEGRATIONS[j]; break; }
+    }
+    $('intgName').textContent = item.name;
+    $('intgScene').textContent = item.scene;
+    $('intgNote').textContent = item.note;
+    $('intgCode').textContent = item.code(location.origin, currentKey());
+  }
+
   function setStatus(kind, text) {
     $('dot').className = 'dot' + (kind ? ' ' + kind : '');
     $('statusText').textContent = text;
@@ -576,6 +751,8 @@ const UI_HTML = `<!DOCTYPE html>
     if (rk) { rk.textContent = ''; rk.dataset.key = ''; rk.style.display = 'none'; }
     var sh = $('scHint');
     if (sh) sh.textContent = '';
+    var intgCode = $('intgCode');
+    if (intgCode) intgCode.textContent = '';
   }
 
   function requireReauth() {
@@ -744,6 +921,7 @@ const UI_HTML = `<!DOCTYPE html>
       renderDiagnostics(s);
       renderKeyStatus(s);
       renderServerchanUrl();
+      renderIntegrations();
       start();
     }).catch(function (err) {
       if (err.message === 'unauthorized') return;
@@ -863,6 +1041,13 @@ const UI_HTML = `<!DOCTYPE html>
     });
   });
 
+  $('btnCopyIntg').addEventListener('click', function () {
+    var text = $('intgCode').textContent;
+    if (!text) { toast('暂无可复制的示例'); return; }
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { toast('已复制该接入示例'); });
+    else toast('请手动复制代码框内容');
+  });
+
   $('btnCopyCurl').addEventListener('click', function () {
     var token = state.rotatingKey || $('fSendToken').value.trim() || state.sendToken || '<YOUR_KEY>';
     var title = $('fTitle').value.trim() || '测试标题';
@@ -879,7 +1064,10 @@ const UI_HTML = `<!DOCTYPE html>
     else toast('已生成，请手动复制');
   });
 
-  $('fSendToken').addEventListener('input', renderServerchanUrl);
+  $('fSendToken').addEventListener('input', function () {
+    renderServerchanUrl();
+    renderIntegrations();
+  });
   $('scUrl').addEventListener('click', function () {
     var url = this.dataset.url;
     if (url && navigator.clipboard) navigator.clipboard.writeText(url).then(function () { toast('已复制推送地址'); });
@@ -919,6 +1107,7 @@ const UI_HTML = `<!DOCTYPE html>
       ? '新密钥已生效，旧密钥立即失效。请到软件里替换成这个新 key。点密钥框可复制。'
       : '这是当前生效的推送密钥。点密钥框可复制；轮换后此 key 失效。';
     renderServerchanUrl();
+    renderIntegrations();
   }
 
   function adminHeaders() {

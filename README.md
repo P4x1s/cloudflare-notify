@@ -2,7 +2,7 @@
 
 > 个人及非营利用途免费（PolyForm Noncommercial 1.0.0）；公司、团体及商业用途请联系 <https://github.com/P4x1s> 获取商业授权。
 
-类似ServerChan思路的最小通知工具：部署在 **Cloudflare Workers** 上，用一个 URL 或一次 API 调用发送消息，打开网页即可查看，无需自建服务器。
+一个参考「方糖 / ServerChan」思路的最小通知工具：部署在 **Cloudflare Workers** 上，用一个 URL 或一次 API 调用发送消息，打开网页即可查看，无需自建服务器。
 
 零成本核心：Workers 免费额度 + KV 免费额度 + 免费自定义域名 + 免费 SSL。
 
@@ -126,6 +126,8 @@ cloudflare-notify/
 | `OPTIONS` | 任意 | 无 | CORS 预检 |
 
 ### 3.2 发送消息
+
+> 平台内置**「推送接入」多方式面板**：登录网页后左侧栏可切换 8 种接入方式（URL 直发、JSON API、表单 API、方糖/Server酱、Python、Node.js、CI/定时、RouterHook），每种都有可直接复制的示例，并自动填入当前轮换密钥与站点域名。下方各节是对应的完整说明。
 
 **方式 A：URL 直发（快捷指令 / 浏览器书签 / 只能填 URL 的软件）**
 
