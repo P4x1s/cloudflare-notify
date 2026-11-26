@@ -2034,10 +2034,118 @@ function fmtWecomTime(ts) {
   return new Date(Number(ts) + 8 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
 }
 
+// ---- 投递可观测性：单 KV key 环形缓冲（省免费写额度）+ 失败告警 ----
+const DELIVERY_KEY = 'meta:delivery';
+const DELIVERY_MAX = 30;
+const ALERT_THRESHOLD = 3;          // 连续失败 N 次触发告警
+const ALERT_COOLDOWN_MS = 10 * 60 * 1000; // 告警静默窗口，防刷屏
+
+/** 错误脱敏：去掉完整 URL、query key/token、控制字符，绝不让 Webhook key 进日志或 KV */
+function sanitizePushError(err, env) {
+  let s = err == null ? '' : (typeof err === 'string' ? err : (err.message || String(err)));
+  try {
+    const wh = String((env && env.WECOM_WEBHOOK) || '').trim();
+    if (wh) s = s.split(wh).join('[webhook]');
+  } catch (_) { /* ignore */ }
+  s = s.replace(/https?:\/\/[^\s"'<>]+/gi, '[url]')
+       .replace(/([?&](?:key|token|sendkey|access_token)=)[^&\s"']+/gi, '$1***')
+       .replace(/[\u0000-\u001f\u007f]/g, ' ');
+  return s.slice(0, 240) || 'unknown error';
+}
+
+/** 读投递日志；任何异常都退化为空，绝不影响主流程 */
+async function readDeliveryLog(env) {
+  try {
+    const raw = await env.NOTIFICATIONS.get(DELIVERY_KEY);
+    if (!raw) return { items: [], lastAlertAt: 0 };
+    const v = JSON.parse(raw);
+    if (!v || !Array.isArray(v.items)) return { items: [], lastAlertAt: 0 };
+    return { items: v.items.slice(0, DELIVERY_MAX), lastAlertAt: Number(v.lastAlertAt) || 0 };
+  } catch (_) {
+    return { items: [], lastAlertAt: 0 };
+  }
+}
+
+async function writeDeliveryLog(env, log) {
+  try {
+    await env.NOTIFICATIONS.put(DELIVERY_KEY, JSON.stringify({
+      items: (log.items || []).slice(0, DELIVERY_MAX),
+      lastAlertAt: Number(log.lastAlertAt) || 0,
+    }));
+  } catch (e) {
+    console.warn('[notify] delivery log write failed:', e && e.message ? e.message : e);
+  }
+}
+
+async function recordDelivery(env, entry) {
+  const log = await readDeliveryLog(env);
+  log.items.unshift(entry);
+  log.items = log.items.slice(0, DELIVERY_MAX);
+  await writeDeliveryLog(env, log);
+  return log;
+}
+
+/** 从最新一条往前数连续失败次数 */
+function consecutiveFailures(items) {
+  let n = 0;
+  for (const it of items || []) {
+    if (it && it.ok === false) n++;
+    else break;
+  }
+  return n;
+}
+
+/**
+ * 连续失败达到阈值且过了静默窗口时，写一条系统告警消息到通知中心。
+ * 关键：告警直接 saveMessage，不经过 pushToWecom —— 天然防环（告警不会再触发告警）。
+ */
+async function maybeAlertWecom(env, log) {
+  const fails = consecutiveFailures(log.items);
+  if (fails < ALERT_THRESHOLD) return;
+  const now = Date.now();
+  if (log.lastAlertAt && now - log.lastAlertAt < ALERT_COOLDOWN_MS) return;
+  const lastErr = ((log.items || []).find((x) => x && x.error) || {}).error || 'unknown error';
+  log.lastAlertAt = now;
+  await writeDeliveryLog(env, log); // 先落告警时间，防并发重复告警
+  try {
+    await saveMessage(env, {
+      title: '⚠️ 企业微信推送失败告警',
+      content: '连续 ' + fails + ' 次推送失败。最近错误：' + lastErr +
+        '。请检查 WECOM_WEBHOOK 配置、群机器人是否有效、是否被限流（群机器人约 20 条/分钟）。' +
+        '本告警直接进入通知中心，不会再次触发推送。',
+      type: 'text',
+      source: 'system/alert',
+    });
+    console.warn('[notify] wecom failure alert sent, consecutive=' + fails);
+  } catch (e) {
+    console.warn('[notify] wecom failure alert failed:', e && e.message ? e.message : e);
+  }
+}
+
+/** 供 /api/status 使用的投递摘要（已鉴权端点，字段均已脱敏） */
+async function readDeliverySummary(env) {
+  const log = await readDeliveryLog(env);
+  const items = log.items || [];
+  const last = items[0] || null;
+  const lastOk = items.find((x) => x && x.ok === true) || null;
+  return {
+    lastAt: last ? last.ts : 0,
+    lastOkAt: lastOk ? lastOk.ts : 0,
+    lastError: last && last.ok === false ? (last.error || '') : '',
+    consecutiveFailures: consecutiveFailures(items),
+    recentFailures: items.filter((x) => x && x.ok === false).length,
+    sampled: items.length,
+    recent: items.slice(0, 10).map((x) => ({
+      ts: x.ts, ok: x.ok, source: x.source || '', error: x.error || '',
+    })),
+  };
+}
+
 /**
  * 通过企业微信群机器人 Webhook 推送通知。
  * 未配置 Webhook 时静默跳过；任何异常都被吞掉，绝不影响消息入库。
- * 返回 { configured, ok, error? }。
+ * 成功/失败均写一条脱敏投递记录；连续失败达阈值时写系统告警消息（防环）。
+ * 返回结构保持 { configured, ok, error? } 不变（兼容既有调用方）。
  */
 async function pushToWecom(env, message) {
   const webhook = String(env.WECOM_WEBHOOK || '').trim();
@@ -2048,12 +2156,14 @@ async function pushToWecom(env, message) {
   // 避免群里有到 <b>xxx</b> 这类字面标签碎片。
   const title = (stripTagsText(message.title || '', 100) || '（无标题）');
   const body = htmlToMarkdown(message.content).slice(0, 1000);
-  const meta = String(message.source || 'api').slice(0, 60) + ' · ' + fmtWecomTime(message.timestamp);
+  const meta = String(message.source || 'api').slice(0, 60) + ' · ' + fmtWecomTime(message.timestamp || Date.now());
   const markdown = {
     msgtype: 'markdown',
     markdown: { content: '**' + title + '**' + (body ? '\n' + body : '') + '\n> ' + meta },
   };
 
+  const t0 = Date.now();
+  let result;
   try {
     const res = await fetch(webhook, {
       method: 'POST',
@@ -2061,19 +2171,35 @@ async function pushToWecom(env, message) {
       body: JSON.stringify(markdown),
       signal: AbortSignal.timeout(8000),
     });
-    let result = {};
-    try { result = await res.json(); } catch (_) { /* 企业微信异常时可能非 JSON */ }
-    if (!res.ok || result.errcode !== 0) {
-      return { configured: true, ok: false, error: result.errmsg || ('HTTP ' + res.status) };
-    }
-    return { configured: true, ok: true };
+    let payload = {};
+    try { payload = await res.json(); } catch (_) { /* 企业微信异常时可能非 JSON */ }
+    result = (!res.ok || payload.errcode !== 0)
+      ? { configured: true, ok: false, error: sanitizePushError(payload.errmsg || ('HTTP ' + res.status), env) }
+      : { configured: true, ok: true };
   } catch (err) {
-    return {
-      configured: true,
-      ok: false,
-      error: err && err.message ? err.message : 'Webhook 请求失败',
-    };
+    result = { configured: true, ok: false, error: sanitizePushError(err, env) };
   }
+
+  // 投递记账：best-effort，绝不影响主流程与既有返回结构
+  try {
+    const log = await recordDelivery(env, {
+      ts: Date.now(),
+      ms: Date.now() - t0,
+      ok: result.ok,
+      source: String((message && message.source) || 'api').slice(0, 60),
+      eventId: String((message && message.id) || ''),
+      error: result.ok ? '' : String(result.error || '').slice(0, 240),
+    });
+    if (result.ok) {
+      console.log(JSON.stringify({ evt: 'wecom.push.ok', ms: result.ms }));
+    } else {
+      console.warn(JSON.stringify({ evt: 'wecom.push.fail', ms: result.ms, error: result.error }));
+      await maybeAlertWecom(env, log);
+    }
+  } catch (e) {
+    console.warn('[notify] delivery bookkeeping failed:', e && e.message ? e.message : e);
+  }
+  return result;
 }
 
 // ============================== RouterHook 兼容模块 ==============================
@@ -2607,7 +2733,7 @@ export class RouterHookSensorDO extends DOBase {
   }
 }
 
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 
 export default {
   async fetch(request, env) {
@@ -2740,6 +2866,7 @@ export default {
             turnstileSecretKeySet: Boolean(turnstileSecretKey(env)),
             turnstileMisconfigured: turnstileMisconfigured(env),
             turnstileHostnames: turnstileHostnames(env),
+            delivery: await readDeliverySummary(env),
           },
         });
       }

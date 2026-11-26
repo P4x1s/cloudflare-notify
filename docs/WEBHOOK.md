@@ -3,6 +3,8 @@
 > 本文基于 **v1.9.0 实际源码**（`worker.js`）审计，不是通用科普。目的：分清「项目作为接收方」与「项目作为推送方」两个方向，逐项评估适用场景、可靠性、安全性、运维成本，并给出**哪些值得补进本项目**的明确结论与优先级。
 >
 > 涉及的安全建议均遵循业界通行做法（HMAC-SHA256 覆盖 raw body + 时间戳、常量时间比较、5 分钟容差、事件 ID 幂等等，参见 Stripe / GitHub / Slack 官方文档）。
+>
+> **落地状态（v1.9.1）**：本文的 **P0-a 失败告警** 与 **P0-b 投递可观测** 已实现并上线到代码——`pushToWecom()` 现在每次成功/失败都写一条脱敏投递记录（单 KV key 环形缓冲，上限 30 条），连续失败 3 次会自动向通知中心写系统告警消息（直接落库、不走推送，天然防环，10 分钟静默窗口）；`/api/status` 的 `diagnostics.delivery` 暴露 `lastAt / lastOkAt / lastError / consecutiveFailures / recentFailures / recent`。专项测试 `_test_delivery.mjs` 41 项通过。P1/P2 尚未实现，按下文优先级推进。
 
 ---
 

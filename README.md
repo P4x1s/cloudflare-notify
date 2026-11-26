@@ -34,6 +34,7 @@
 | **HttpOnly 会话 Cookie** | 验证通过签发 HMAC 签名的会话 Cookie（7 天），密钥不落 localStorage，JS/XSS 都读不到；改 `READ_TOKEN` 会让旧会话立即失效 |
 | **Turnstile 人机验证** | 可选开启（默认关闭）。登录接口增加 Cloudflare Turnstile 挑战，**服务端 Siteverify 校验**（不信任前端 token），防暴力破解与脚本自动化 |
 | **变量模板（v1.9）** | 正文/标题支持 `{date}` `{time}` `{source}` 等内置变量与自定义 `v.名称`，服务端落库前单次替换；CI、定时任务可让标题/正文自动带时间与来源。详见 [3.2.1](#321-变量模板动态内容-v19) |
+| **投递可观测 + 失败告警（v1.9.1）** | 最近 30 条企微投递结果（时间/成败/耗时/脱敏错误）存单 KV key，`/api/status` 的 `diagnostics.delivery` 可看最后成功时间、连续失败数；连续失败 3 次自动向通知中心写系统告警（防环、10 分钟静默窗口）；错误一律脱敏，不泄露 Webhook key。详见 [docs/WEBHOOK.md](docs/WEBHOOK.md) |
 | 自定义域名 | Cloudflare 控制台一键绑定，自动签发证书 |
 | 安全响应头 | 已设 CSP、nosniff、Referrer-Policy、X-Frame-Options、Permissions-Policy；CORS 默认收紧为同源 |
 
