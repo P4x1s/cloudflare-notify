@@ -12,7 +12,24 @@
 
 ![通知中心界面](docs/screenshot-notifications.png)
 
-· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md) · Webhook 接入与演进建议：[WEBHOOK.md](docs/WEBHOOK.md) · 产品改进路线图：[ROADMAP.md](docs/ROADMAP.md)
+· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md) · Webhook 接入与演进建议：[WEBHOOK.md](docs/WEBHOOK.md) · 产品改进路线图：[ROADMAP.md](docs/ROADMAP.md) · **v2.0 升级说明：[V20_RELEASE.md](docs/V20_RELEASE.md)**
+
+---
+
+## v2.0.0 升级摘要
+
+v2.0 是一次面向「可交付给团队使用」的完整升级，单文件部署方式不变，旧接口保持兼容。
+
+| 分类 | 新增能力 |
+| --- | --- |
+| 渠道 | 统一渠道抽象层；企业微信 / 钉钉 / 飞书并行推送，面板可配置、可测试，逐渠道投递状态 |
+| 消息 | 单条删除、批量来源过滤、全文搜索、按天分组、重新推送、消息 90 天自动过期 |
+| 规则 | 通知模板、静默时段（只落库不外发）、幂等键（24 小时） |
+| 安全 | 发送限流（IP + 密钥双维度）、可选入站 HMAC 签名、Webhook 公网 HTTPS + 内网地址拦截、请求体 256KB 上限、审计日志 |
+| 界面 | 移动端深度适配、底部操作栏、手动深浅色主题、常驻服务状态组件、自定义确认弹窗、变量预览、自适应轮询 |
+| 容量 | 轮询从固定 5 秒改为 5→15→30 秒自适应，显著降低 KV 读次数 |
+
+完整变更、配置项与验证结果见 [docs/V20_RELEASE.md](docs/V20_RELEASE.md)。升级后 `/api/status` 的 `version` 返回 `2.0.0`。
 
 ---
 
@@ -22,7 +39,7 @@
 | --- | --- |
 | URL 发消息 | `GET /send?token=...&title=...&content=...`，浏览器、curl、快捷指令、Webhook 都能用 |
 | API 发消息 | `POST /api/send`，支持 JSON 与表单，另接受 `text` / `desp` 等别名字段方便各类脚本接入 |
-| 即时查看 | Web 页面每 5 秒自动轮询，无需手动刷新 |
+| 即时查看 | Web 页面自动轮询，无需手动刷新；v2.0 起空闲时逐步从 5 秒降到 15/30 秒 |
 | 通知折叠 | 折叠时显示**标题 + 内容摘要**（两行），不用展开也能读到正文；点击展开看全文，支持全部展开/折叠 |
 | **富文本通知** | 推送正文支持有限 HTML 渲染（加粗/链接/换行/列表/代码块/引用/标题），服务端白名单消毒防 XSS；纯文本消息保留原始换行，展示风格统一 |
 | **RouterHook 全兼容（v1.8）** | 专用接口 `/api/routerhook/{event}` 完整支持手动/定时/重拨/新设备上线与全部虚拟传感器；中文摘要 + 完整原始 JSON；高频传感器经 Durable Object 按设备独立聚合（固定 60 秒窗口），企业微信只收汇总消息不刷屏。详见 [docs/ROUTERHOOK.md](docs/ROUTERHOOK.md) |
@@ -38,6 +55,11 @@
 | **投递可观测 + 失败告警（v1.9.1）** | 最近 30 条企微投递结果（时间/成败/耗时/脱敏错误）存单 KV key，`/api/status` 的 `diagnostics.delivery` 可看最后成功时间、连续失败数；连续失败 3 次自动向通知中心写系统告警（防环、10 分钟静默窗口）；错误一律脱敏，不泄露 Webhook key。详见 [docs/WEBHOOK.md](docs/WEBHOOK.md) |
 | 自定义域名 | Cloudflare 控制台一键绑定，自动签发证书 |
 | 安全响应头 | 已设 CSP、nosniff、Referrer-Policy、X-Frame-Options、Permissions-Policy；CORS 默认收紧为同源 |
+| **多渠道（v2.0）** | 企业微信 / 钉钉 / 飞书统一抽象层，面板配置 Webhook、启停与测试；各渠道并行发送、独立记账，返回 `channels` 数组；Webhook 强制 HTTPS 且拒绝内网地址 |
+| **消息管理（v2.0）** | 单条删除、重新推送、关键词搜索、来源过滤、按天分组；消息默认 90 天自动过期，避免免费版 KV 存储被长期累积占满 |
+| **规则与模板（v2.0）** | 命名模板 + 变量预览；静默时段内消息仍落库但不外发；`X-Idempotency-Key` 支持 24 小时幂等，避免上游重试刷屏 |
+| **安全加固（v2.0）** | IP/密钥双维度限流、可选 HMAC 入站签名、256KB 请求体上限、操作审计日志；写操作需要管理主密钥或已启用的查看验证 |
+| **界面与容量（v2.0）** | 移动端底部操作栏、手动深浅色主题、服务状态组件、自定义确认弹窗；轮询按空闲程度降到 15/30 秒，减少 KV 读取 |
 
 ---
 
@@ -212,7 +234,7 @@ GET https://你的域名/send?token=<密钥>&title={title}&content={time}&source
 | `{weekday}` | 中文星期 | `星期四` |
 | `{uuid}` | 随机 UUID | `9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d` |
 | `{random}` | 8 位随机串 | `a3f9k2lm` |
-| `{version}` | 服务版本号 | `1.9.0` |
+| `{version}` | 服务版本号 | `2.0.0` |
 | `{source}` | 当前消息来源字段 | `ci` |
 
 **自定义变量**（调用方传值，替换同名占位符；**优先于内置变量**）

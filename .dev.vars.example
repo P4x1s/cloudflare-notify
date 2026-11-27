@@ -46,3 +46,24 @@ TURNSTILE_SECRET_KEY=
 #   - 填了 = 严格白名单，只有列表内的域名能通过校验。
 # 注意：生产环境不要填 localhost / 127.0.0.1（官方明确提醒）。
 # TURNSTILE_HOSTNAMES=cloudflare-notify.com
+
+# ---------------------------------------------------------------------------
+# v2.0 可选配置
+# ---------------------------------------------------------------------------
+# 消息自动过期天数（1~365，默认 90）。历史消息到期自动删除，
+# 防止免费版 KV 的 1GB 存储上限被长期累积的消息占满。
+MESSAGE_TTL_DAYS=90
+
+# 发送限流（默认值已足够个人/小团队使用，可按业务调整）
+SEND_RATE_PER_MIN=60
+SEND_RATE_PER_DAY=500
+KEY_RATE_PER_MIN=120
+KEY_RATE_PER_DAY=1000
+
+# RouterHook 传感器聚合窗口（30 / 60 / 120 秒，默认 60）
+# ROUTERHOOK_WINDOW_SECONDS=60
+
+# 入站 HMAC 签名密钥（可选，敏感信息）。
+# 设置后所有写请求必须带 X-Cfn-Signature: sha256=<HMAC-SHA256(该密钥, 原始请求体)>。
+# 线上请只放 Dashboard → Secrets，不要写进 Git。
+# INBOUND_SIGNING_SECRET=

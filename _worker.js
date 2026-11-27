@@ -436,6 +436,111 @@ const UI_CSS = `
   .ts-msg.show { display: block; }
   .ts-msg.info { background: rgba(79,140,255,.10); color: var(--primary); }
   .primary:disabled { opacity: .55; cursor: not-allowed; }
+
+  /* ---------- v2.0：手动主题覆盖（优先级高于系统偏好） ---------- */
+  :root[data-theme="light"] {
+    color-scheme: light; --bg:#f4f6fa; --card:#ffffff; --text:#1f2430; --muted:#6b7280;
+    --border:#e5e7eb; --primary:#2563eb; --primary-hover:#1d4ed8; --danger:#dc2626; --ok:#16a34a;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark; --bg:#0f1115; --card:#191c23; --text:#e8eaed; --muted:#9aa1ad;
+    --border:#2b303b; --primary:#4f8cff; --primary-hover:#3b74e0; --danger:#f87171; --ok:#4ade80;
+  }
+
+  /* ---------- v2.0：快捷导航 ---------- */
+  .quick-nav { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 14px; }
+  .quick-nav a {
+    font-size:11.5px; color:var(--muted); text-decoration:none; border:var(--line);
+    border-radius:999px; padding:4px 11px; background:transparent;
+  }
+  .quick-nav a:hover, .quick-nav a.active { color:var(--primary); border-color:var(--primary); }
+
+  /* ---------- v2.0：服务状态小组件 ---------- */
+  .health-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+  .health-item {
+    display:flex; align-items:center; gap:7px; font-size:11.5px; padding:6px 8px;
+    border:var(--line); border-radius:8px; background:var(--bg); min-width:0;
+  }
+  .health-item .flag { color:var(--ok); font-weight:700; flex:none; }
+  .health-item.bad .flag { color:var(--danger); }
+  .health-item span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* ---------- v2.0：渠道配置卡片 ---------- */
+  .channel-card { border:var(--line); border-radius:10px; padding:11px; background:var(--bg); margin-bottom:9px; }
+  .channel-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .channel-name { font-size:12.5px; font-weight:600; }
+  .channel-card input[type="password"], .channel-card input[type="text"] { font-size:12px; padding:7px 9px; }
+  .switch { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); cursor:pointer; }
+  .channel-state { font-size:10px; color:var(--muted); }
+  .channel-state.on { color:var(--ok); }
+
+  /* ---------- v2.0：消息搜索/过滤/操作 ---------- */
+  .search-box { position:relative; flex:1 1 220px; min-width:160px; }
+  .search-box input { font-size:12px; padding:7px 10px 7px 28px; }
+  .search-box::before { content:'⌕'; position:absolute; left:9px; top:4px; color:var(--muted); font-size:15px; }
+  .chips { display:flex; gap:5px; flex-wrap:wrap; margin:0 0 10px; }
+  .chip {
+    font-size:10.5px; padding:3px 9px; border-radius:999px; border:var(--line);
+    background:transparent; color:var(--muted); cursor:pointer;
+  }
+  .chip.active { color:#fff; background:var(--primary); border-color:var(--primary); }
+  .day-group {
+    font-size:11px; color:var(--muted); margin:12px 0 6px; padding-left:2px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .day-group::after { content:''; flex:1; height:1px; background:var(--line); }
+  .msg-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
+  .msg-actions button { font-size:11px; padding:4px 9px; }
+  .delivery-line { font-size:11px; color:var(--muted); margin-top:7px; line-height:1.7; }
+  .delivery-line .ok { color:var(--ok); }
+  .delivery-line .bad { color:var(--danger); }
+
+  /* ---------- v2.0：代码块复制按钮 ---------- */
+  .code-wrap { position:relative; }
+  .code-copy {
+    position:absolute; right:7px; top:7px; font-size:10px; padding:3px 7px;
+    border-radius:6px; border:var(--line); background:var(--card); opacity:.75;
+  }
+  .code-copy:hover { opacity:1; }
+
+  /* ---------- v2.0：自定义确认弹窗 ---------- */
+  .confirm-box {
+    width:100%; max-width:380px; background:var(--card); border:var(--line);
+    border-radius:14px; box-shadow:var(--shadow); padding:22px;
+  }
+  .confirm-box h3 { margin:0 0 8px; font-size:15px; }
+  .confirm-box p { margin:0 0 16px; font-size:12.5px; color:var(--muted); line-height:1.7; }
+  .confirm-box .row { justify-content:flex-end; margin-top:0; }
+
+  /* ---------- v2.0：<600px 移动端深度适配 ---------- */
+  @media (max-width: 600px) {
+    .wrap { padding:16px 12px 78px; }
+    header.top { align-items:flex-start; }
+    .brand h1 { font-size:17px; }
+    .section { padding:16px 14px; }
+    .panel-cols { grid-template-columns:1fr; }
+    .intg-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .intg-code { max-height:200px; font-size:12px; }
+    .row { flex-direction:column; align-items:stretch; }
+    .row button { width:100%; }
+    input, textarea { font-size:16px; }
+    .msg-head { padding:9px 10px; gap:7px; }
+    .msg .m-title { font-size:13px; }
+    .msg-detail { padding:0 10px 10px 10px; }
+    .msg .m-body { max-height:260px; }
+    .list-actions { width:100%; }
+    .list-actions button { flex:1 1 auto; }
+    .search-box { flex-basis:100%; }
+    .health-grid { grid-template-columns:1fr; }
+    .bottom-bar {
+      position:fixed; left:0; right:0; bottom:0; z-index:30; display:flex; gap:6px;
+      padding:8px 12px calc(8px + env(safe-area-inset-bottom)); border-top:var(--line);
+      background:var(--card); box-shadow:0 -4px 16px rgba(0,0,0,.06);
+    }
+    .bottom-bar button { flex:1; font-size:12px; padding:7px 4px; }
+  }
+  @media (min-width: 601px) { .bottom-bar { display:none; } }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
 `;
 
 const UI_HTML = `<!DOCTYPE html>
@@ -444,6 +549,7 @@ const UI_HTML = `<!DOCTYPE html>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>通知中心 · Cloudflare Notify</title>
+<script>(function(){try{var t=localStorage.getItem('cfn_theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 <style>${UI_CSS}</style>
 </head>
 <body>
@@ -459,19 +565,33 @@ const UI_HTML = `<!DOCTYPE html>
     <div class="status">
       <span class="dot" id="dot"></span>
       <span id="statusText">正在连接…</span>
+      <button class="ghost" id="btnTheme" title="切换主题">主题</button>
       <button class="ghost" id="btnDiag" style="display:none">配置自检</button>
       <button class="ghost" id="btnLogout" style="display:none">退出</button>
     </div>
   </header>
 
+  <nav class="quick-nav" id="quickNav">
+    <a href="#sec-integration" data-nav="sec-integration">接入</a>
+    <a href="#sec-channels" data-nav="sec-channels">渠道</a>
+    <a href="#sec-rules" data-nav="sec-rules">规则</a>
+    <a href="#sec-key" data-nav="sec-key">密钥</a>
+    <a href="#sec-send" data-nav="sec-send">发送</a>
+    <a href="#sec-list" data-nav="sec-list">通知</a>
+  </nav>
+
   <div class="panel">
     <div class="diag-strip" id="diagStrip" hidden>
       <div class="diag-inner" id="diagBody"></div>
     </div>
+    <div class="section" id="healthPanel" style="display:none">
+      <div class="tool-head"><h2>服务状态</h2><span class="tool-badge" id="healthBadge">检查中</span></div>
+      <div class="health-grid" id="healthGrid"></div>
+    </div>
 
     <div class="panel-cols">
       <div class="panel-side">
-        <section class="section">
+        <section class="section" id="sec-integration">
           <div class="tool-head">
             <h2>推送接入</h2>
             <span class="tool-badge">9 种方式</span>
@@ -484,7 +604,10 @@ const UI_HTML = `<!DOCTYPE html>
               <button class="ghost intg-copy" id="btnCopyIntg">复制示例</button>
             </div>
             <div class="intg-scene" id="intgScene"></div>
-            <pre class="intg-code" id="intgCode"></pre>
+            <div class="code-wrap">
+              <pre class="intg-code" id="intgCode"></pre>
+              <button class="code-copy" id="btnCodeCopy" type="button">复制</button>
+            </div>
             <div class="hint" id="intgNote"></div>
           </div>
           <div class="inline-status" id="intgStatus" role="status"></div>
@@ -499,7 +622,42 @@ const UI_HTML = `<!DOCTYPE html>
           </div>
         </section>
 
-        <section class="section">
+        <section class="section" id="sec-channels">
+          <div class="tool-head">
+            <h2>通知渠道</h2>
+            <span class="tool-badge" id="channelBadge">读取中</span>
+          </div>
+          <p class="tool-note">企业微信 / 钉钉 / 飞书可同时启用。Webhook 只保存在你自己的 KV，面板展示时自动脱敏。</p>
+          <div id="channelList"></div>
+          <div class="inline-status" id="channelStatus" role="status"></div>
+          <div class="row">
+            <button class="primary" id="btnSaveChannels">保存渠道配置</button>
+          </div>
+          <div class="hint" id="channelHint">保存需要管理主密钥 SEND_TOKEN。</div>
+        </section>
+
+        <section class="section" id="sec-rules">
+          <div class="tool-head">
+            <h2>规则与模板</h2>
+            <span class="tool-badge" id="ruleBadge">可选</span>
+          </div>
+          <p class="tool-note">静默时段内的消息仍会存入通知中心，只是不推送到外部渠道。</p>
+          <label><input type="checkbox" id="fQuietEnabled" style="width:auto;margin-right:6px" />启用静默时段</label>
+          <div class="row" style="margin-top:8px">
+            <input type="time" id="fQuietStart" value="23:00" style="flex:1" />
+            <input type="time" id="fQuietEnd" value="07:00" style="flex:1" />
+          </div>
+          <label for="fTemplates">通知模板（JSON）</label>
+          <textarea id="fTemplates" style="min-height:76px;font-size:11px" placeholder='{"deploy":{"title":"{title}","content":"{content}"}}'></textarea>
+          <div class="row">
+            <button class="primary" id="btnSaveRules">保存规则</button>
+            <button class="ghost" id="btnPreviewVars">预览变量</button>
+          </div>
+          <div class="inline-status" id="ruleStatus" role="status"></div>
+          <div class="hint box" id="varPreview" style="display:none"></div>
+        </section>
+
+        <section class="section" id="sec-key">
           <div class="tool-head">
             <h2>密钥与轮换</h2>
             <span class="tool-badge" id="keyBadge">读取中</span>
@@ -517,7 +675,7 @@ const UI_HTML = `<!DOCTYPE html>
           <div class="hint" id="rotateHint"></div>
         </section>
 
-        <section class="section">
+        <section class="section" id="sec-send">
           <div class="tool-head">
             <h2>发送测试通知</h2>
             <span class="tool-badge" id="wecomBadge">企微 —</span>
@@ -542,7 +700,7 @@ const UI_HTML = `<!DOCTYPE html>
       </div>
 
       <div class="panel-main">
-        <section class="section">
+        <section class="section" id="sec-list">
           <div class="list-head">
             <h2>最近通知</h2>
             <div class="list-actions">
@@ -552,7 +710,11 @@ const UI_HTML = `<!DOCTYPE html>
               <button class="ghost danger" id="btnClear">清空</button>
             </div>
           </div>
-          <div class="hint" style="margin:0 0 12px">折叠时显示标题与内容摘要，点击标题行展开全文。</div>
+          <div class="list-head" style="margin-bottom:6px">
+            <div class="search-box"><input id="fSearch" type="search" placeholder="搜索标题、内容或来源…" autocomplete="off" /></div>
+          </div>
+          <div class="chips" id="sourceChips"></div>
+          <div class="hint" style="margin:0 0 12px">折叠时显示标题与内容摘要，点击标题行展开全文；支持按来源过滤与按时间分组。</div>
           <div id="list">
             <div class="empty"><div class="icon">◇</div><p>加载中…</p></div>
           </div>
@@ -576,6 +738,23 @@ const UI_HTML = `<!DOCTYPE html>
   </div>
 </div>
 
+<div class="overlay hidden" id="confirmOverlay">
+  <div class="confirm-box">
+    <h3 id="confirmTitle">确认操作</h3>
+    <p id="confirmText"></p>
+    <div class="row">
+      <button class="ghost" id="btnConfirmCancel">取消</button>
+      <button class="danger" id="btnConfirmOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <button id="btnMobileRefresh">刷新</button>
+  <button id="btnMobileToggle">展开全部</button>
+  <button id="btnMobileTop">回到顶部</button>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!--@TS_SCRIPTS@-->
@@ -592,7 +771,15 @@ const UI_HTML = `<!DOCTYPE html>
     expanded: {},
     allExpanded: false,
     version: '',
-    timer: null
+    timer: null,
+    idlePolls: 0,
+    search: '',
+    sourceFilter: 'all',
+    channels: [],
+    settings: null,
+    templates: {},
+    deliveries: {},
+    adminMode: false
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -609,6 +796,24 @@ const UI_HTML = `<!DOCTYPE html>
     el.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  // 自定义确认弹窗（E6）：替代原生 confirm，风格与主界面一致。
+  function confirmAction(title, text, onOk) {
+    $('confirmTitle').textContent = title || '确认操作';
+    $('confirmText').textContent = text || '';
+    $('confirmOverlay').classList.remove('hidden');
+    function cleanup() {
+      $('confirmOverlay').classList.add('hidden');
+      $('btnConfirmOk').onclick = null;
+      $('btnConfirmCancel').onclick = null;
+    }
+    $('btnConfirmOk').onclick = function () { cleanup(); onOk(); };
+    $('btnConfirmCancel').onclick = cleanup;
+  }
+
+  function masterToken() {
+    return $('fMasterToken') ? $('fMasterToken').value.trim() : '';
   }
 
   // 推送接入示例目录：所有端点与字段别名均与 worker.js 服务端实现一致。
@@ -898,6 +1103,35 @@ const UI_HTML = `<!DOCTYPE html>
     $('btnDiag').addEventListener('click', function () {
       $('diagStrip').hidden = !$('diagStrip').hidden;
     });
+    renderHealth(s, allOk);
+  }
+
+  // 常驻服务状态小组件（U6）：默认展开，异常项用红色标识。
+  function renderHealth(s, allOk) {
+    if (!s || !s.diagnostics) return;
+    var d = s.diagnostics;
+    var readyChannels = (s.channels || []).filter(function (c) { return c.configured && c.enabled; }).length;
+    var fails = d.delivery ? Number(d.delivery.consecutiveFailures || 0) : 0;
+    var items = [
+      ['Worker 服务', true],
+      ['KV 存储', Boolean(d.kvOk)],
+      ['推送渠道', readyChannels > 0],
+      ['发送密钥', Boolean(d.sendTokenSet)],
+      ['最近投递', fails < 3],
+      ['安全配置', Boolean(d.sendTokenSet || d.readTokenSet)],
+    ];
+    var good = 0;
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var ok = Boolean(items[i][1]);
+      if (ok) good++;
+      html += '<div class="health-item' + (ok ? '' : ' bad') + '">' +
+        '<span class="flag">' + (ok ? '✓' : '✕') + '</span><span>' + esc(items[i][0]) + '</span></div>';
+    }
+    $('healthGrid').innerHTML = html;
+    $('healthBadge').textContent = good + '/' + items.length + ' 正常';
+    $('healthBadge').className = 'tool-badge' + (good === items.length ? ' on' : '');
+    $('healthPanel').style.display = '';
   }
 
   function renderServerchanUrl() {
@@ -925,20 +1159,82 @@ const UI_HTML = `<!DOCTYPE html>
     badge.className = 'tool-badge' + (s.rotatingKeyReady ? ' on' : '');
   }
 
+  function sourceChips() {
+    var counts = {};
+    for (var i = 0; i < state.messages.length; i++) {
+      var s = String(state.messages[i].source || 'api');
+      counts[s] = (counts[s] || 0) + 1;
+    }
+    var keys = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).slice(0, 8);
+    var html = '<button type="button" class="chip' + (state.sourceFilter === 'all' ? ' active' : '') +
+      '" data-source="all">全部 ' + state.messages.length + '</button>';
+    for (var j = 0; j < keys.length; j++) {
+      html += '<button type="button" class="chip' + (state.sourceFilter === keys[j] ? ' active' : '') +
+        '" data-source="' + esc(keys[j]) + '">' + esc(keys[j]) + ' ' + counts[keys[j]] + '</button>';
+    }
+    $('sourceChips').innerHTML = html;
+  }
+
+  function dayLabel(ts) {
+    var d = new Date(ts);
+    var today = new Date();
+    var yest = new Date(Date.now() - 86400000);
+    var same = function (a, b) {
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    };
+    if (same(d, today)) return '今天';
+    if (same(d, yest)) return '昨天';
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function visibleMessages() {
+    var q = String(state.search || '').trim().toLowerCase();
+    var out = [];
+    for (var i = 0; i < state.messages.length; i++) {
+      var m = state.messages[i];
+      if (state.sourceFilter !== 'all' && String(m.source || 'api') !== state.sourceFilter) continue;
+      if (q) {
+        var hay = String(m.title || '') + ' ' + String(m.content || '') + ' ' + String(m.source || '');
+        if (hay.toLowerCase().indexOf(q) < 0) continue;
+      }
+      out.push(m);
+    }
+    return out;
+  }
+
+  function deliveryHtml(id) {
+    var rows = (state.deliveries && state.deliveries[id]) || [];
+    if (!rows.length) return '';
+    var html = '<div class="delivery-line">投递：';
+    for (var i = 0; i < rows.length; i++) {
+      var label = { wecom: '企微', dingtalk: '钉钉', feishu: '飞书' }[rows[i].channel] || rows[i].channel;
+      html += '<span class="' + (rows[i].ok ? 'ok' : 'bad') + '">' + esc(label) + (rows[i].ok ? ' ✓' : ' ✕') + '</span> ';
+    }
+    return html + '</div>';
+  }
+
   function render() {
     var box = $('list');
-    $('count').textContent = state.messages.length + ' 条';
+    var list = visibleMessages();
+    $('count').textContent = list.length + (list.length === state.messages.length ? '' : ' / ' + state.messages.length) + ' 条';
+    sourceChips();
 
-    if (!state.messages.length) {
+    if (!list.length) {
       box.innerHTML = '<div class="empty"><div class="icon">◇</div>' +
-        '<p>暂无通知。用左侧表单发送一条，或调用 /send 接口。</p></div>';
+        '<p>' + (state.messages.length ? '没有匹配的通知，试试调整搜索词或来源过滤。' : '暂无通知。用左侧表单发送一条，或调用 /send 接口。') + '</p></div>';
       return;
     }
 
     var html = '';
-    for (var i = 0; i < state.messages.length; i++) {
-      var m = state.messages[i];
+    var lastDay = '';
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i];
       var id = String(m.id || i);
+      var day = dayLabel(m.timestamp);
+      if (day !== lastDay) {
+        html += '<div class="day-group">' + esc(day) + '</div>';
+        lastDay = day;
+      }
       var open = state.allExpanded || Boolean(state.expanded[id]);
       html += '<div class="msg' + (open ? ' open' : '') + '" data-id="' + esc(id) + '">' +
         '<div class="msg-head" role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '">' +
@@ -958,11 +1254,19 @@ const UI_HTML = `<!DOCTYPE html>
         // 旧数据/旧接口无该字段时降级为纯文本转义，展示不劣化。
         (m.content ? '<div class="m-body ' + (m.isRich ? 'rich' : 'text') + '">' +
           (m.contentHtml || esc(m.content)) + '</div>' : '') +
+        deliveryHtml(id) +
         '<div class="m-meta">来源：' + esc(m.source || 'api') + ' · ID：' + esc(id) + '</div>' +
+        '<div class="msg-actions">' +
+        '<button type="button" class="ghost" data-act="copy" data-id="' + esc(id) + '">复制内容</button>' +
+        '<button type="button" class="ghost" data-act="resend" data-id="' + esc(id) + '">重新推送</button>' +
+        '<button type="button" class="ghost danger" data-act="delete" data-id="' + esc(id) + '">删除</button>' +
+        '</div>' +
         '</div></div>';
     }
     box.innerHTML = html;
     $('btnToggleAll').textContent = state.allExpanded ? '全部折叠' : '全部展开';
+    var mobileToggle = $('btnMobileToggle');
+    if (mobileToggle) mobileToggle.textContent = state.allExpanded ? '折叠全部' : '展开全部';
   }
 
   function toggleMessage(id) {
@@ -984,6 +1288,8 @@ const UI_HTML = `<!DOCTYPE html>
       state.version = data.version || state.version;
       if (!data.unchanged) {
         state.messages = data.messages || [];
+        if (data.deliveries) state.deliveries = data.deliveries;
+        state.idlePolls = 0;
         render();
       }
       setStatus('live', '已连接 · ' + fmtTime(Date.now()) + ' 更新');
@@ -1016,6 +1322,8 @@ const UI_HTML = `<!DOCTYPE html>
       renderDiagnostics(s);
       renderKeyStatus(s);
       renderServerchanUrl();
+      loadChannels();
+      loadRules();
       renderIntegrations();
       start();
     }).catch(function (err) {
@@ -1027,8 +1335,12 @@ const UI_HTML = `<!DOCTYPE html>
   function start() {
     loadMessages();
     clearInterval(state.timer);
+    // 自适应轮询：无变化时逐步从 5s 降到 15s / 30s，显著减少 KV 读次数。
     state.timer = setInterval(function () {
-      if (!document.hidden) loadMessages();
+      if (document.hidden) return;
+      state.idlePolls++;
+      var every = state.idlePolls < 4 ? 1 : (state.idlePolls < 12 ? 3 : 6);
+      if (state.idlePolls % every === 0) loadMessages();
     }, REFRESH_MS);
   }
 
@@ -1055,8 +1367,276 @@ const UI_HTML = `<!DOCTYPE html>
   });
 
   $('btnRefresh').addEventListener('click', function () {
+    state.idlePolls = 0;
     loadMessages().then(function () { toast('已刷新'); });
   });
+
+  // ---------- v2.0 交互：主题 / 导航 / 搜索 / 消息操作 ----------
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('cfn_theme', t); } catch (e) {}
+  }
+  $('btnTheme').addEventListener('click', function () {
+    var cur = document.documentElement.getAttribute('data-theme');
+    var next = cur === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    toast(next === 'dark' ? '已切换到深色主题' : '已切换到浅色主题');
+  });
+
+  $('quickNav').addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[data-nav]');
+    if (!a) return;
+    var el = $(a.getAttribute('data-nav'));
+    if (!el) return;
+    if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    Array.prototype.forEach.call($('quickNav').children, function (n) {
+      n.className = n === a ? 'active' : '';
+    });
+  });
+
+  $('fSearch').addEventListener('input', function () {
+    state.search = this.value;
+    render();
+  });
+  $('sourceChips').addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.chip');
+    if (!b) return;
+    state.sourceFilter = b.getAttribute('data-source') || 'all';
+    render();
+  });
+
+  $('list').addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-act]');
+    if (!btn) return;
+    var id = btn.getAttribute('data-id');
+    var act = btn.getAttribute('data-act');
+    var m = null;
+    for (var i = 0; i < state.messages.length; i++) {
+      if (String(state.messages[i].id) === id) { m = state.messages[i]; break; }
+    }
+    if (!m) return;
+
+    if (act === 'copy') {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(String(m.content || m.title || '')).then(function () {
+          toast('已复制消息内容');
+        });
+      } else {
+        toast('当前环境不支持自动复制');
+      }
+      return;
+    }
+    if (act === 'resend') {
+      var headers = {};
+      var t = state.rotatingKey || state.sendToken;
+      if (t) headers['X-Token'] = t;
+      api('/api/send', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({ title: m.title, content: m.content, source: m.source || 'resend' }),
+      }).then(function () {
+        toast('已重新推送');
+        return loadMessages();
+      }).catch(function (err) {
+        if (err.message !== 'unauthorized') toast('重新推送失败：' + err.message);
+      });
+      return;
+    }
+    if (act === 'delete') {
+      confirmAction('删除这条通知', '删除后无法恢复，确定要删除「' + String(m.title || '无标题').slice(0, 40) + '」吗？', function () {
+        var mt = masterToken();
+        var h = mt ? { 'X-Token': mt } : {};
+        api('/api/messages/' + encodeURIComponent(id), { method: 'DELETE', headers: h })
+          .then(function () { toast('已删除'); return loadMessages(); })
+          .catch(function (err) {
+            if (err.message !== 'unauthorized') toast('删除失败：' + err.message);
+          });
+      });
+    }
+  });
+
+  if ($('btnMobileRefresh')) $('btnMobileRefresh').addEventListener('click', function () {
+    state.idlePolls = 0;
+    loadMessages().then(function () { toast('已刷新'); });
+  });
+  if ($('btnMobileToggle')) $('btnMobileToggle').addEventListener('click', function () {
+    state.allExpanded = !state.allExpanded;
+    state.expanded = {};
+    render();
+  });
+  if ($('btnMobileTop')) $('btnMobileTop').addEventListener('click', function () {
+    window.scrollTo(0, 0);
+  });
+  $('btnCodeCopy').addEventListener('click', function () {
+    var text = $('intgCode').textContent;
+    if (!text) { setInline('intgStatus', 'err', '示例为空，请刷新页面后重试。'); return; }
+    if (!navigator.clipboard) { setInline('intgStatus', 'err', '当前环境不支持自动复制。'); return; }
+    navigator.clipboard.writeText(text).then(function () {
+      setInline('intgStatus', 'ok', '示例代码已复制。');
+    });
+  });
+
+  // ---------- v2.0 交互：渠道 / 规则 ----------
+  function renderChannels() {
+    var html = '';
+    for (var i = 0; i < state.channels.length; i++) {
+      var c = state.channels[i];
+      html += '<div class="channel-card" data-channel="' + esc(c.id) + '">' +
+        '<div class="channel-top">' +
+        '<span class="channel-name">' + esc(c.name) + '</span>' +
+        '<span class="channel-state' + (c.configured ? ' on' : '') + '">' + (c.configured ? '已配置' : '未配置') + '</span>' +
+        '</div>' +
+        '<input type="password" class="channel-webhook" value="' + esc(c.webhook || '') + '" placeholder="留空则不启用该渠道" autocomplete="off" />' +
+        '<div class="row" style="margin-top:8px">' +
+        '<label class="switch"><input type="checkbox" class="channel-enabled" ' + (c.enabled ? 'checked' : '') + ' />启用</label>' +
+        '<button type="button" class="ghost" data-test="' + esc(c.id) + '">测试发送</button>' +
+        '</div></div>';
+    }
+    $('channelList').innerHTML = html;
+    var ready = state.channels.filter(function (c) { return c.configured && c.enabled; }).length;
+    $('channelBadge').textContent = ready + '/' + state.channels.length + ' 已配置';
+    $('channelBadge').className = 'tool-badge' + (ready ? ' on' : '');
+  }
+
+  function loadChannels() {
+    return api('/api/channels').then(function (data) {
+      state.channels = data.channels || [];
+      state.adminMode = Boolean(data.editable);
+      renderChannels();
+      setInline('channelStatus', 'info', state.adminMode
+        ? '可在面板直接保存渠道配置，Webhook 仅存于你的 KV。'
+        : '当前只读：填入管理主密钥 SEND_TOKEN 后可修改配置。');
+      return data;
+    }).catch(function (err) {
+      if (err.message !== 'unauthorized') setInline('channelStatus', 'err', '渠道读取失败：' + err.message);
+    });
+  }
+
+  $('channelList').addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-test]');
+    if (!b) return;
+    var mt = masterToken();
+    if (!mt) { setInline('channelStatus', 'err', '请先填入管理主密钥 SEND_TOKEN。'); return; }
+    var id = b.getAttribute('data-test');
+    b.disabled = true;
+    setInline('channelStatus', 'info', '正在测试 ' + id + ' 渠道…');
+    api('/api/channels/test', {
+      method: 'POST',
+      headers: { 'X-Token': mt },
+      body: JSON.stringify({ id: id }),
+    }).then(function (data) {
+      setInline('channelStatus', 'ok', '测试消息已发往 ' + id + '，请到对应群查看。');
+    }).catch(function (err) {
+      setInline('channelStatus', 'err', '测试失败：' + err.message);
+    }).finally(function () { b.disabled = false; });
+  });
+
+  $('btnSaveChannels').addEventListener('click', function () {
+    var mt = masterToken();
+    if (!mt) { setInline('channelStatus', 'err', '请先填入管理主密钥 SEND_TOKEN。'); return; }
+    var cards = $('channelList').querySelectorAll('.channel-card');
+    var cfg = [];
+    for (var i = 0; i < cards.length; i++) {
+      cfg.push({
+        id: cards[i].getAttribute('data-channel'),
+        webhook: cards[i].querySelector('.channel-webhook').value.trim(),
+        enabled: cards[i].querySelector('.channel-enabled').checked,
+      });
+    }
+    var btn = this;
+    btn.disabled = true;
+    api('/api/channels', {
+      method: 'PUT',
+      headers: { 'X-Token': mt },
+      body: JSON.stringify({ channels: cfg }),
+    }).then(function (data) {
+      state.channels = data.channels || [];
+      renderChannels();
+      setInline('channelStatus', 'ok', '渠道配置已保存并立即生效。');
+    }).catch(function (err) {
+      setInline('channelStatus', 'err', '保存失败：' + err.message);
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  function loadRules() {
+    return api('/api/settings').then(function (data) {
+      state.settings = data.settings || null;
+      if (state.settings) {
+        $('fQuietEnabled').checked = Boolean(state.settings.quietEnabled);
+        $('fQuietStart').value = state.settings.quietStart || '23:00';
+        $('fQuietEnd').value = state.settings.quietEnd || '07:00';
+      }
+      return api('/api/templates');
+    }).then(function (data) {
+      state.templates = data.templates || {};
+      $('fTemplates').value = JSON.stringify(state.templates, null, 2);
+      $('ruleBadge').textContent = Object.keys(state.templates).length + ' 个模板';
+    }).catch(function (err) {
+      if (err.message !== 'unauthorized') setInline('ruleStatus', 'err', '规则读取失败：' + err.message);
+    });
+  }
+
+  $('btnSaveRules').addEventListener('click', function () {
+    var mt = masterToken();
+    if (!mt) { setInline('ruleStatus', 'err', '请先填入管理主密钥 SEND_TOKEN。'); return; }
+    var settings = {
+      quietEnabled: $('fQuietEnabled').checked,
+      quietStart: $('fQuietStart').value,
+      quietEnd: $('fQuietEnd').value,
+      quietChannels: ['wecom', 'dingtalk', 'feishu'],
+    };
+    var templates;
+    try { templates = JSON.parse($('fTemplates').value.trim() || '{}'); }
+    catch (e) { setInline('ruleStatus', 'err', '模板 JSON 格式不正确：' + e.message); return; }
+    var btn = this;
+    btn.disabled = true;
+    api('/api/settings', {
+      method: 'PUT', headers: { 'X-Token': mt }, body: JSON.stringify({ settings: settings }),
+    }).then(function () {
+      return api('/api/templates', {
+        method: 'PUT', headers: { 'X-Token': mt }, body: JSON.stringify({ templates: templates }),
+      });
+    }).then(function (data) {
+      state.templates = data.templates || {};
+      state.settings = settings;
+      $('fTemplates').value = JSON.stringify(state.templates, null, 2);
+      $('ruleBadge').textContent = Object.keys(state.templates).length + ' 个模板';
+      setInline('ruleStatus', 'ok', '规则与模板已保存。');
+    }).catch(function (err) {
+      setInline('ruleStatus', 'err', '保存失败：' + err.message);
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  function previewVars() {
+    var src = $('fContent').value || $('fTitle').value || '';
+    var d = new Date();
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    var map = {
+      date: d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()),
+      time: p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()),
+      datetime: d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()),
+      timestamp: String(Math.floor(d.getTime() / 1000)),
+      timestamp_ms: String(d.getTime()),
+      weekday: '星期' + '日一二三四五六'[d.getDay()],
+      version: '2.0.0',
+      source: 'preview',
+    };
+    var out = '';
+    var pos = 0;
+    while (true) {
+      var a = src.indexOf('{', pos);
+      if (a < 0) { out += src.slice(pos); break; }
+      var b = src.indexOf('}', a + 1);
+      if (b < 0) { out += src.slice(pos); break; }
+      var name = src.slice(a + 1, b);
+      out += src.slice(pos, a);
+      out += Object.prototype.hasOwnProperty.call(map, name) ? map[name] : ('{' + name + '}');
+      pos = b + 1;
+    }
+    $('varPreview').textContent = '预览：' + (out || '（内容为空）');
+    $('varPreview').style.display = 'block';
+  }
+  $('btnPreviewVars').addEventListener('click', previewVars);
 
   $('btnLogin').addEventListener('click', function () {
     var btn = this;
@@ -1127,11 +1707,18 @@ const UI_HTML = `<!DOCTYPE html>
         $('fTitle').value = '';
         $('fContent').value = '';
         var w = res.d.wecom || {};
-        var msg = w.configured
-          ? (w.ok === false
-              ? '已存入通知中心，但企微推送失败：' + (w.error || '未知错误')
-              : '已发送 · 企业微信已送达')
-          : '已发送 · 未配置企业微信推送';
+        var channels = res.d.channels || [];
+        var msg = '已存入通知中心';
+        if (w.configured && w.ok === false) {
+          msg += ' · 企业微信推送失败：' + (w.error || '未知错误');
+        } else if (w.configured) {
+          msg += ' · 企业微信已送达';
+        } else {
+          msg += ' · 未配置企业微信推送';
+        }
+        var others = channels.filter(function (c) { return c.id !== 'wecom' && c.configured && c.ok; })
+          .map(function (c) { return c.name || c.id; });
+        if (others.length) msg += ' · 另已送达 ' + others.join('/');
         setInline('sendFeedback', w.configured && w.ok === false ? 'err' : 'ok', msg);
         return loadMessages();
       })
@@ -1140,12 +1727,15 @@ const UI_HTML = `<!DOCTYPE html>
   });
 
   $('btnClear').addEventListener('click', function () {
-    if (!window.confirm('确定清空全部通知吗？此操作不可恢复。')) return;
-    api('/api/clear', { method: 'POST' }).then(function (data) {
-      toast('已清空 ' + (data.deleted || 0) + ' 条');
-      return loadMessages();
-    }).catch(function (err) {
-      if (err.message !== 'unauthorized') toast('清空失败：' + err.message);
+    confirmAction('清空全部通知', '此操作会删除收件箱里的全部消息，且无法恢复。确定继续吗？', function () {
+      var mt = masterToken();
+      var h = mt ? { 'X-Token': mt } : {};
+      api('/api/clear', { method: 'POST', headers: h }).then(function (data) {
+        toast('已清空 ' + (data.deleted || 0) + ' 条');
+        return loadMessages();
+      }).catch(function (err) {
+        if (err.message !== 'unauthorized') toast('清空失败：' + err.message);
+      });
     });
   });
 
@@ -1413,8 +2003,8 @@ const LOGIN_HTML = `<!DOCTYPE html>
 // 同源页面、curl、服务端 Webhook 调用均不受影响（它们不依赖 CORS）。
 // 这是有意的收窄——旧版用 '*' 允许任意站点读取 API，已移除。
 const CORS_PREFLIGHT_HEADERS = {
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Token',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Token, X-Idempotency-Key, X-Cfn-Signature',
   'Access-Control-Max-Age': '86400',
 };
 
@@ -1966,6 +2556,97 @@ function hasAdminPermission(request, url, env, body) {
   return Boolean(token) && timingSafeEqual(token, master);
 }
 
+/**
+ * 写操作鉴权（删除 / 清空 / 配置变更）：
+ * 1) 管理主密钥 SEND_TOKEN 优先；
+ * 2) 已启用 READ_TOKEN 时，会话 Cookie / READ_TOKEN 也可执行（方便面板操作）；
+ * 3) 两个密钥都没配置的完全公开模式，保持旧行为可用。
+ */
+async function hasWritePermission(request, url, env, body) {
+  if (hasAdminPermission(request, url, env, body)) return true;
+  if (env.READ_TOKEN && (await hasReadPermission(request, url, env))) return true;
+  return !env.SEND_TOKEN && !env.READ_TOKEN;
+}
+
+/**
+ * 入站 HMAC 签名（可选）：设置 INBOUND_SIGNING_SECRET 后，所有写请求必须带
+ * X-Cfn-Signature: sha256=<HMAC-SHA256(secret, 原始请求体)>，防止伪造 Webhook。
+ * 未设置密钥时保持旧行为（签名校验关闭）。
+ */
+async function verifyInboundSignature(request, env) {
+  const secret = String((env && env.INBOUND_SIGNING_SECRET) || '').trim();
+  if (!secret) return { ok: true };
+  const provided = String(request.headers.get('X-Cfn-Signature') || '').trim();
+  if (!/^sha256=[0-9a-f]{64}$/i.test(provided)) return { ok: false, error: '缺少或无效的 X-Cfn-Signature' };
+  const raw = await request.clone().text();
+  if (raw.length > 262144) return { ok: false, error: '请求体过大' };
+  const expected = 'sha256=' + await hmacHex(secret, raw);
+  return timingSafeEqual(provided.toLowerCase(), expected.toLowerCase())
+    ? { ok: true }
+    : { ok: false, error: '签名校验失败' };
+}
+
+/**
+ * 发送入口限流（E2）：按 IP 与密钥指纹双维度做滑动窗口计数。
+ * 计数在 isolate 内存中，尽力而为；生产环境建议同时配置 Cloudflare WAF Rate Limiting。
+ * 默认值：单 IP 60 次/分、500 次/天；单密钥 120 次/分、1000 次/天。
+ */
+const rateBuckets = new Map();
+const RATE_BUCKET_MAX = 4096;
+
+function rateBucket(key, windowMs, now) {
+  let rec = rateBuckets.get(key);
+  if (!rec || now - rec.start >= windowMs) {
+    rec = { start: now, count: 0 };
+    rateBuckets.set(key, rec);
+  }
+  rec.count += 1;
+  if (rateBuckets.size > RATE_BUCKET_MAX) {
+    for (const [k, v] of rateBuckets) {
+      if (now - v.start >= Math.max(60000, windowMs)) rateBuckets.delete(k);
+    }
+    while (rateBuckets.size > RATE_BUCKET_MAX) {
+      const oldest = rateBuckets.keys().next().value;
+      if (oldest === undefined) break;
+      rateBuckets.delete(oldest);
+    }
+  }
+  return rec;
+}
+
+async function checkSendRateLimit(request, env) {
+  const now = Date.now();
+  const ip = clientIp(request).slice(0, 80);
+  const token = String(
+    request.headers.get('X-Token') ||
+    (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '') ||
+    new URL(request.url).searchParams.get('token') || ''
+  );
+  const fp = token ? (await sha256Hex(token)).slice(0, 16) : 'anon';
+  const num = (name, dflt) => {
+    const v = Number(env && env[name]);
+    return Number.isFinite(v) && v > 0 ? Math.floor(v) : dflt;
+  };
+  const limits = [
+    ['ip-m:' + ip, 60000, num('SEND_RATE_PER_MIN', 60)],
+    ['ip-d:' + ip, 86400000, num('SEND_RATE_PER_DAY', 500)],
+    ['key-m:' + fp, 60000, num('KEY_RATE_PER_MIN', 120)],
+    ['key-d:' + fp, 86400000, num('KEY_RATE_PER_DAY', 1000)],
+  ];
+  for (const [key, windowMs, max] of limits) {
+    const rec = rateBucket(key, windowMs, now);
+    if (rec.count > max) {
+      const retry = Math.max(1, Math.ceil((rec.start + windowMs - now) / 1000));
+      return json(
+        { ok: false, error: '请求过于频繁，请稍后重试', retryAfter: retry },
+        429,
+        { 'Retry-After': String(retry) }
+      );
+    }
+  }
+  return null;
+}
+
 function generateId() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
 }
@@ -1975,6 +2656,15 @@ const PREFIX = 'msg:';
 const VERSION_KEY = 'meta:version';
 const SENDKEY_KEY = 'meta:sendkey';
 const ROTATED_AT_KEY = 'meta:sendkey_rotated_at';
+const CHANNELS_KEY = 'meta:channels';
+const TEMPLATES_KEY = 'meta:templates';
+const SETTINGS_KEY = 'meta:settings';
+const AUDIT_KEY = 'meta:audit';
+const IDEM_PREFIX = 'meta:idem:';
+const IDEM_TTL_SECONDS = 24 * 60 * 60;
+const CHANNEL_IDS = Object.freeze(['wecom', 'dingtalk', 'feishu']);
+const CHANNEL_NAMES = Object.freeze({ wecom: '企业微信', dingtalk: '钉钉', feishu: '飞书' });
+const AUDIT_MAX = 30;
 const MAX_TIMESTAMP = Number.MAX_SAFE_INTEGER;
 
 async function getVersion(env) {
@@ -2007,6 +2697,234 @@ async function rotateSendKey(env) {
   await env.NOTIFICATIONS.put(ROTATED_AT_KEY, String(Date.now()));
   await env.NOTIFICATIONS.put(VERSION_KEY, String(Date.now()));
   return key;
+}
+
+/** SHA-256 十六进制（幂等键 / 审计指纹使用，不用于密钥派生） */
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** 版本号自增：面板改配置后轮询客户端能立刻拿到新数据 */
+async function bumpVersion(env) {
+  try {
+    if (env && env.NOTIFICATIONS) await env.NOTIFICATIONS.put(VERSION_KEY, String(Date.now()));
+  } catch (e) {
+    console.warn('[notify] bump version failed:', e && e.message ? e.message : e);
+  }
+}
+
+/** 操作审计：只记录动作与脱敏摘要，不记录密钥原文 */
+async function appendAudit(env, action, detail) {
+  try {
+    if (!env || !env.NOTIFICATIONS) return;
+    const raw = await env.NOTIFICATIONS.get(AUDIT_KEY);
+    let items = [];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.items)) items = parsed.items;
+    }
+    items.unshift({ at: Date.now(), action: String(action || '').slice(0, 60), detail: String(detail || '').slice(0, 200) });
+    await env.NOTIFICATIONS.put(AUDIT_KEY, JSON.stringify({ items: items.slice(0, AUDIT_MAX) }));
+  } catch (e) {
+    console.warn('[notify] audit write failed:', e && e.message ? e.message : e);
+  }
+}
+
+/** 默认静默时段设置（不改变既有行为） */
+function defaultSettings() {
+  return {
+    quietEnabled: false,
+    quietStart: '23:00',
+    quietEnd: '07:00',
+    quietChannels: ['wecom', 'dingtalk', 'feishu'],
+  };
+}
+
+async function readSettings(env) {
+  const fallback = defaultSettings();
+  try {
+    if (!env || !env.NOTIFICATIONS) return fallback;
+    const raw = await env.NOTIFICATIONS.get(SETTINGS_KEY);
+    if (!raw) return fallback;
+    const v = JSON.parse(raw);
+    if (!v || typeof v !== 'object') return fallback;
+    const timeOk = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s || ''));
+    return {
+      quietEnabled: Boolean(v.quietEnabled),
+      quietStart: timeOk(v.quietStart) ? v.quietStart : fallback.quietStart,
+      quietEnd: timeOk(v.quietEnd) ? v.quietEnd : fallback.quietEnd,
+      quietChannels: Array.isArray(v.quietChannels)
+        ? v.quietChannels.filter((x) => CHANNEL_IDS.indexOf(x) >= 0)
+        : fallback.quietChannels.slice(),
+    };
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function normalizeSettings(input) {
+  if (!input || typeof input !== 'object') throw new Error('设置必须是对象');
+  const timeOk = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s || ''));
+  if (!timeOk(input.quietStart) || !timeOk(input.quietEnd)) throw new Error('静默时段格式应为 HH:MM');
+  const channels = Array.isArray(input.quietChannels)
+    ? input.quietChannels.filter((x) => CHANNEL_IDS.indexOf(x) >= 0)
+    : [];
+  return {
+    quietEnabled: Boolean(input.quietEnabled),
+    quietStart: String(input.quietStart),
+    quietEnd: String(input.quietEnd),
+    quietChannels: channels,
+  };
+}
+
+/** 判断当前（GMT+8）是否处于静默时段；跨零点与同区间均可正确处理 */
+function isQuietNow(settings, now) {
+  if (!settings || !settings.quietEnabled) return false;
+  const d = shift8(now || new Date());
+  const cur = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const toMin = (s) => {
+    const p = String(s || '00:00').split(':');
+    return Number(p[0]) * 60 + Number(p[1]);
+  };
+  const a = toMin(settings.quietStart);
+  const b = toMin(settings.quietEnd);
+  if (a === b) return false;
+  return a < b ? (cur >= a && cur < b) : (cur >= a || cur < b);
+}
+
+async function readTemplates(env) {
+  try {
+    if (!env || !env.NOTIFICATIONS) return {};
+    const raw = await env.NOTIFICATIONS.get(TEMPLATES_KEY);
+    if (!raw) return {};
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function normalizeTemplates(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('模板配置必须是对象');
+  const out = {};
+  const names = Object.keys(input);
+  if (names.length > 30) throw new Error('模板数量最多 30 个');
+  for (const name of names) {
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(name)) throw new Error('模板名只能包含字母、数字、下划线和短横线');
+    const t = input[name];
+    if (!t || typeof t !== 'object') throw new Error('模板 ' + name + ' 格式不正确');
+    const title = String(t.title || '').slice(0, 200);
+    const content = String(t.content || '').slice(0, 4000);
+    if (!title && !content) throw new Error('模板 ' + name + ' 的标题与内容不能同时为空');
+    out[name] = { title, content };
+  }
+  return out;
+}
+
+/** Webhook 安全校验：只允许公网 HTTPS，阻止内网地址（SSRF 防护） */
+function normalizeWebhook(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  if (s.length > 2048) throw new Error('Webhook 地址过长');
+  let u;
+  try { u = new URL(s); } catch (_) { throw new Error('Webhook 必须是合法 URL'); }
+  if (u.protocol !== 'https:') throw new Error('Webhook 必须使用 HTTPS');
+  const h = u.hostname.toLowerCase();
+  if (h === 'localhost' || h === '::1' || h.endsWith('.local') ||
+      /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^169\.254\./.test(h)) {
+    throw new Error('Webhook 不允许指向内网或保留地址');
+  }
+  return s;
+}
+
+function maskWebhook(url) {
+  const s = String(url || '');
+  if (!s) return '';
+  return s.replace(/([?&](?:key|token|access_token|secret)=)[^&\s]+/gi, '$1***');
+}
+
+function defaultChannelConfigs(env) {
+  return CHANNEL_IDS.map((id) => ({
+    id,
+    name: CHANNEL_NAMES[id],
+    webhook: id === 'wecom' ? String((env && env.WECOM_WEBHOOK) || '').trim() : '',
+    enabled: true,
+  }));
+}
+
+/** 面板配置优先；未配置过时回退到环境变量（保持旧部署零改动可用） */
+async function readChannelConfigs(env) {
+  const fallback = defaultChannelConfigs(env);
+  try {
+    if (!env || !env.NOTIFICATIONS) return fallback;
+    const raw = await env.NOTIFICATIONS.get(CHANNELS_KEY);
+    if (!raw) return fallback;
+    const stored = JSON.parse(raw);
+    if (!Array.isArray(stored)) return fallback;
+    return fallback.map((d) => {
+      const s = stored.find((x) => x && x.id === d.id) || {};
+      return {
+        id: d.id,
+        name: d.name,
+        webhook: typeof s.webhook === 'string' ? s.webhook : '',
+        enabled: s.enabled !== false,
+      };
+    });
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function normalizeChannelConfigs(input) {
+  if (!Array.isArray(input)) throw new Error('渠道配置必须是数组');
+  if (input.length > CHANNEL_IDS.length) throw new Error('渠道数量超出上限');
+  const out = [];
+  for (const item of input) {
+    if (!item || CHANNEL_IDS.indexOf(item.id) < 0) throw new Error('不支持的渠道');
+    if (out.some((x) => x.id === item.id)) throw new Error('渠道不能重复');
+    out.push({
+      id: item.id,
+      name: CHANNEL_NAMES[item.id],
+      webhook: normalizeWebhook(item.webhook),
+      enabled: item.enabled !== false,
+    });
+  }
+  return out;
+}
+
+/** 幂等：从 Header / query / body 中取幂等键并做长度限制 */
+function getIdempotencyKey(meta, data) {
+  const fromMeta = meta && meta.idempotencyKey;
+  const raw = fromMeta || (data && (data.idempotency_key || data.idempotencyKey));
+  const key = String(raw || '').trim();
+  return key.length <= 200 ? key : '';
+}
+
+async function readIdempotency(env, key) {
+  if (!key || !env || !env.NOTIFICATIONS) return null;
+  try {
+    const raw = await env.NOTIFICATIONS.get(IDEM_PREFIX + await sha256Hex(key));
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? v : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function writeIdempotency(env, key, status, body) {
+  if (!key || !env || !env.NOTIFICATIONS) return;
+  try {
+    await env.NOTIFICATIONS.put(
+      IDEM_PREFIX + await sha256Hex(key),
+      JSON.stringify({ status, body, at: Date.now() }),
+      { expirationTtl: IDEM_TTL_SECONDS }
+    );
+  } catch (e) {
+    console.warn('[notify] idempotency write failed:', e && e.message ? e.message : e);
+  }
 }
 
 // ==================== 富文本消息渲染（v1.7，安全白名单） ====================
@@ -2118,11 +3036,38 @@ async function saveMessage(env, input) {
     source: String(input.source || '').slice(0, 100),
     timestamp: now,
   };
+  // 历史消息自动过期，防止免费版 KV 1GB 上限被长期累积的消息占满。
+  // 默认 90 天，可通过 MESSAGE_TTL_DAYS 变量调整（1～365 天）。
+  const ttlDays = Math.max(1, Math.min(365, Number((env && env.MESSAGE_TTL_DAYS) || 90) || 90));
   await env.NOTIFICATIONS.put(key, JSON.stringify(message), {
     metadata: { id: message.id, timestamp: message.timestamp },
+    expirationTtl: ttlDays * 86400,
   });
-  await env.NOTIFICATIONS.put(VERSION_KEY, String(now));
+  await bumpVersion(env);
   return message;
+}
+
+/** 按消息 ID 找到 KV key（key 内嵌 id，避免逐条 getValue 消耗读额度） */
+async function findMessageKey(env, id) {
+  const target = String(id || '');
+  if (!target || !/^[A-Za-z0-9-]{1,40}$/.test(target)) return null;
+  let cursor;
+  do {
+    const result = await env.NOTIFICATIONS.list({ prefix: PREFIX, cursor, limit: 1000 });
+    const hit = result.keys.find((k) => k.name.endsWith('-' + target));
+    if (hit) return hit.name;
+    cursor = result.list_complete ? undefined : result.cursor;
+  } while (cursor);
+  return null;
+}
+
+/** 删除单条消息；返回是否命中 */
+async function deleteMessage(env, id) {
+  const key = await findMessageKey(env, id);
+  if (!key) return false;
+  await env.NOTIFICATIONS.delete(key);
+  await bumpVersion(env);
+  return true;
 }
 
 async function listMessages(env, limit = 50) {
@@ -2238,8 +3183,8 @@ function consecutiveFailures(items) {
  * 连续失败达到阈值且过了静默窗口时，写一条系统告警消息到通知中心。
  * 关键：告警直接 saveMessage，不经过 pushToWecom —— 天然防环（告警不会再触发告警）。
  */
-async function maybeAlertWecom(env, log) {
-  const fails = consecutiveFailures(log.items);
+async function maybeAlertWecom(env, log, watchedItems) {
+  const fails = consecutiveFailures(watchedItems || log.items);
   if (fails < ALERT_THRESHOLD) return;
   const now = Date.now();
   if (log.lastAlertAt && now - log.lastAlertAt < ALERT_COOLDOWN_MS) return;
@@ -2281,64 +3226,144 @@ async function readDeliverySummary(env) {
 }
 
 /**
- * 通过企业微信群机器人 Webhook 推送通知。
- * 未配置 Webhook 时静默跳过；任何异常都被吞掉，绝不影响消息入库。
- * 成功/失败均写一条脱敏投递记录；连续失败达阈值时写系统告警消息（防环）。
- * 返回结构保持 { configured, ok, error? } 不变（兼容既有调用方）。
+ * 统一渠道发送接口（C1）。所有渠道返回同构结果：
+ *   { id, name, configured, ok, skipped?, error?, ms? }
+ * 新增渠道只需在这里加一个分支 + 在 CHANNEL_IDS 注册，核心流程无需改动。
  */
-async function pushToWecom(env, message) {
-  const webhook = String(env.WECOM_WEBHOOK || '').trim();
-  if (!webhook) return { configured: false, ok: false, skipped: true };
+async function sendChannel(channel, message, env) {
+  const id = channel.id;
+  const name = channel.name || CHANNEL_NAMES[id] || id;
+  const webhook = String(channel.webhook || '').trim();
+  if (!webhook) return { id, name, configured: false, ok: false, skipped: true };
 
-  // 企业微信 markdown 上限 4096 字节，中文按 3 字节算，正文截断以留足余量。
-  // 正文/标题先做 HTML→markdown 转换：加粗/链接/换行保留语义，其余标签剥离，
-  // 避免群里有到 <b>xxx</b> 这类字面标签碎片。
-  const title = (stripTagsText(message.title || '', 100) || '（无标题）');
+  // 正文先做 HTML→markdown 转换，避免群聊里出现字面 HTML 标签碎片。
+  const title = stripTagsText(message.title || '', 100) || '（无标题）';
   const body = htmlToMarkdown(message.content).slice(0, 1000);
   const meta = String(message.source || 'api').slice(0, 60) + ' · ' + fmtWecomTime(message.timestamp || Date.now());
-  const markdown = {
-    msgtype: 'markdown',
-    markdown: { content: '**' + title + '**' + (body ? '\n' + body : '') + '\n> ' + meta },
-  };
 
-  const t0 = Date.now();
+  let payload;
+  if (id === 'wecom') {
+    payload = {
+      msgtype: 'markdown',
+      markdown: { content: '**' + title + '**' + (body ? '\n' + body : '') + '\n> ' + meta },
+    };
+  } else if (id === 'dingtalk') {
+    // 钉钉 markdown 不支持 '>' 引用块，元信息改为普通行；title 为 markdown 类型必填字段。
+    payload = {
+      msgtype: 'markdown',
+      markdown: { title: title.slice(0, 80), text: '### ' + title + '\n\n' + body + '\n\n' + meta },
+    };
+  } else if (id === 'feishu') {
+    // 飞书自定义机器人：交互式卡片，视觉层级优于纯文本。
+    payload = {
+      msg_type: 'interactive',
+      card: {
+        config: { wide_screen_mode: true },
+        header: { title: { tag: 'plain_text', content: title.slice(0, 100) }, template: 'blue' },
+        elements: [
+          { tag: 'div', text: { tag: 'lark_md', content: body || '（无正文）' } },
+          { tag: 'hr' },
+          { tag: 'note', elements: [{ tag: 'plain_text', content: meta }] },
+        ],
+      },
+    };
+  } else {
+    return { id, name, configured: false, ok: false, error: 'unsupported channel' };
+  }
+
   let result;
   try {
     const res = await fetch(webhook, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(markdown),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(8000),
     });
-    let payload = {};
-    try { payload = await res.json(); } catch (_) { /* 企业微信异常时可能非 JSON */ }
-    result = (!res.ok || payload.errcode !== 0)
-      ? { configured: true, ok: false, error: sanitizePushError(payload.errmsg || ('HTTP ' + res.status), env) }
-      : { configured: true, ok: true };
+    let p = {};
+    try { p = await res.json(); } catch (_) { /* 部分机器人异常时返回非 JSON */ }
+    const ok = res.ok && (id === 'feishu' ? (p.code === 0 || p.StatusCode === 0) : p.errcode === 0);
+    result = ok
+      ? { id, name, configured: true, ok: true }
+      : { id, name, configured: true, ok: false, error: sanitizePushError(p.errmsg || p.msg || ('HTTP ' + res.status), env) };
   } catch (err) {
-    result = { configured: true, ok: false, error: sanitizePushError(err, env) };
+    result = { id, name, configured: true, ok: false, error: sanitizePushError(err, env) };
+  }
+  return result;
+}
+
+/**
+ * 分发到所有已启用且已配置的渠道（C1/C4/C6）。
+ * - 静默时段内只跳过外发渠道，消息仍正常落库；
+ * - 各渠道并行发送，单个失败不影响其他渠道；
+ * - 统一写入脱敏投递日志，企业微信连续失败时触发系统告警（防环）。
+ * 返回 { channels, wecom, silenced }，其中 wecom 保持旧结构向后兼容。
+ */
+async function dispatchChannels(env, message) {
+  const configs = await readChannelConfigs(env);
+  const settings = await readSettings(env);
+  const silenced = isQuietNow(settings);
+  const quietIds = settings.quietChannels || [];
+  const targets = configs.filter((c) => c.enabled !== false && c.webhook && (!silenced || quietIds.indexOf(c.id) < 0));
+  const skippedOf = (c) => ({
+    id: c.id,
+    name: c.name || CHANNEL_NAMES[c.id] || c.id,
+    configured: false,
+    ok: false,
+    skipped: true,
+    silenced: silenced && quietIds.indexOf(c.id) >= 0,
+  });
+
+  if (!targets.length) {
+    return {
+      channels: configs.map(skippedOf),
+      wecom: Object.assign(skippedOf(configs.find((c) => c.id === 'wecom') || { id: 'wecom' }), { silenced }),
+      silenced,
+    };
   }
 
-  // 投递记账：best-effort，绝不影响主流程与既有返回结构
+  const results = await Promise.all(targets.map(async (c) => {
+    const t0 = Date.now();
+    const r = await sendChannel(c, message, env);
+    r.ms = Date.now() - t0;
+    return r;
+  }));
+
   try {
-    const log = await recordDelivery(env, {
-      ts: Date.now(),
-      ms: Date.now() - t0,
-      ok: result.ok,
-      source: String((message && message.source) || 'api').slice(0, 60),
-      eventId: String((message && message.id) || ''),
-      error: result.ok ? '' : String(result.error || '').slice(0, 240),
-    });
-    if (result.ok) {
-      console.log(JSON.stringify({ evt: 'wecom.push.ok', ms: result.ms }));
-    } else {
-      console.warn(JSON.stringify({ evt: 'wecom.push.fail', ms: result.ms, error: result.error }));
-      await maybeAlertWecom(env, log);
+    const log = await readDeliveryLog(env);
+    for (const r of results) {
+      log.items.unshift({
+        ts: Date.now(),
+        ms: r.ms || 0,
+        ok: r.ok,
+        channel: r.id,
+        source: String((message && message.source) || 'api').slice(0, 60),
+        eventId: String((message && message.id) || ''),
+        error: r.ok ? '' : String(r.error || '').slice(0, 240),
+      });
+    }
+    log.items = log.items.slice(0, DELIVERY_MAX);
+    await writeDeliveryLog(env, log);
+    const wecom = results.find((r) => r.id === 'wecom');
+    if (wecom && wecom.ok === false) {
+      // 只看企微记录，避免其他渠道失败误触发企微告警
+      const wecomItems = log.items.filter((x) => !x.channel || x.channel === 'wecom');
+      await maybeAlertWecom(env, log, wecomItems);
     }
   } catch (e) {
     console.warn('[notify] delivery bookkeeping failed:', e && e.message ? e.message : e);
   }
-  return result;
+
+  return {
+    channels: configs.map((c) => results.find((r) => r.id === c.id) || skippedOf(c)),
+    wecom: results.find((r) => r.id === 'wecom') || skippedOf({ id: 'wecom', name: '企业微信' }),
+    silenced,
+  };
+}
+
+/** 兼容旧调用方（RouterHook DO / 测试端点）：仍返回旧的 wecom 结构 */
+async function pushToWecom(env, message) {
+  const result = await dispatchChannels(env, message);
+  return result.wecom;
 }
 
 // ============================== RouterHook 兼容模块 ==============================
@@ -2638,10 +3663,17 @@ function formatRhSensorSingle(s, device) {
 }
 
 // ============================== 请求处理 ==============================
+class BodyTooLargeError extends Error {}
+
+/** 请求体解析：限制最大 256KB，避免大 body 消耗 CPU 与内存 */
 async function parseBody(request) {
+  const declared = Number(request.headers.get('Content-Length') || 0);
+  if (declared > 262144) throw new BodyTooLargeError('request body too large');
   const contentType = request.headers.get('Content-Type') || '';
   if (contentType.includes('application/json')) {
-    try { return await request.json(); } catch { return {}; }
+    const text = await request.text();
+    if (text.length > 262144) throw new BodyTooLargeError('request body too large');
+    try { return JSON.parse(text); } catch { return {}; }
   }
   try {
     const form = await request.formData();
@@ -2737,37 +3769,76 @@ function renderVars(text, data, now) {
   });
 }
 
-async function createMessage(env, data) {
+async function createMessage(env, data, meta) {
+  const input = data || {};
+  const idemKey = getIdempotencyKey(meta, input);
+  if (idemKey) {
+    const hit = await readIdempotency(env, idemKey);
+    if (hit && hit.body) return json(Object.assign({}, hit.body, { idempotent: true }), hit.status || 200);
+  }
+
   const now = new Date();
-  const title = renderVars(String(data.title || data.text || '').trim(), data, now);
-  const content = renderVars(String(data.content || data.desp || data.body || '').trim(), data, now);
+  let src = input;
+  const templateName = String(input.template || '').trim();
+  if (templateName) {
+    const templates = await readTemplates(env);
+    const tpl = templates[templateName];
+    if (!tpl) return json({ ok: false, error: '模板不存在：' + templateName.slice(0, 40) }, 400);
+    src = Object.assign({}, input, {
+      title: input.title || input.text || tpl.title,
+      content: input.content || input.desp || input.body || tpl.content,
+    });
+  }
+
+  const title = renderVars(String(src.title || src.text || '').trim(), src, now);
+  const content = renderVars(String(src.content || src.desp || src.body || '').trim(), src, now);
   if (!title && !content) {
     return json({ ok: false, error: 'title 或 content 至少填写一个' }, 400);
   }
   const message = await saveMessage(env, {
     title: title || '（无标题）',
     content,
-    type: data.type || 'text',
-    source: data.source || 'api',
+    type: src.type || 'text',
+    source: src.source || 'api',
   });
-  // 主动推送到企业微信（best-effort：失败不影响消息入库与 API 成功响应）
-  const wecom = await pushToWecom(env, message);
+  // 并行推送到所有已启用渠道（best-effort：失败不影响消息入库与 API 成功响应）
+  const delivery = await dispatchChannels(env, message);
   // 双返回码：errno（方糖）+ code（Server酱³），两种客户端都能判定成功
-  return json({ ok: true, code: 0, errno: 0, message: '通知已接收', data: message, wecom });
+  const body = {
+    ok: true,
+    code: 0,
+    errno: 0,
+    message: '通知已接收',
+    data: message,
+    wecom: delivery.wecom,
+    channels: delivery.channels,
+    silenced: delivery.silenced,
+  };
+  const response = json(body);
+  if (idemKey) await writeIdempotency(env, idemKey, 200, body);
+  return response;
 }
 
 /**
  * 方糖 / Server酱 兼容发送：路径中的 key 为管理主密钥 SEND_TOKEN 或当前轮换密钥。
  * 同时返回 errno（方糖）与 code（Server酱³）以兼容各类客户端判定成功。
  */
-async function serverchanSend(env, key, data) {
+async function serverchanSend(env, key, data, meta) {
   const master = String(env.SEND_TOKEN || '').trim();
   const current = await getCurrentSendKey(env);
   if (!master && !current) {
     return json({ code: 1, errno: 1, errmsg: '服务端未设置 SEND_TOKEN，请先配置密钥', message: '服务端未设置 SEND_TOKEN' }, 401);
   }
-  if (key !== master && !(Boolean(current) && key === current)) {
+  // 常量时间比较，避免按字节时序差异猜测密钥
+  const masterOk = Boolean(master) && timingSafeEqual(key, master);
+  const currentOk = Boolean(current) && timingSafeEqual(key, current);
+  if (!masterOk && !currentOk) {
     return json({ code: 1, errno: 1, errmsg: 'key 错误', message: 'invalid key' }, 401);
+  }
+  const idemKey = getIdempotencyKey(meta, data);
+  if (idemKey) {
+    const hit = await readIdempotency(env, idemKey);
+    if (hit && hit.body) return json(Object.assign({}, hit.body, { idempotent: true }), hit.status || 200);
   }
   const now = new Date();
   const title = renderVars(String(data.title || data.text || '').trim(), data, now);
@@ -2781,19 +3852,23 @@ async function serverchanSend(env, key, data) {
     type: data.type || 'markdown',
     source: data.source || 'serverchan',
   });
-  const wecom = await pushToWecom(env, message);
-  return json({
+  const delivery = await dispatchChannels(env, message);
+  const body = {
     code: 0,
     errno: 0,
+    ok: true,
     message: '',
     errmsg: 'success',
     data: {
       pushid: message.id,
       readkey: message.id,
       timestamp: message.timestamp,
-      wecom,
+      wecom: delivery.wecom,
+      channels: delivery.channels,
     },
-  });
+  };
+  if (idemKey) await writeIdempotency(env, idemKey, 200, body);
+  return json(body);
 }
 
 /**
@@ -2872,7 +3947,7 @@ export class RouterHookSensorDO extends DOBase {
   }
 }
 
-const VERSION = '1.9.2';
+const VERSION = '2.0.0';
 
 export default {
   async fetch(request, env) {
@@ -2991,6 +4066,13 @@ export default {
           wecomConfigured: Boolean(env.WECOM_WEBHOOK),
           rotatingKeyReady: Boolean(rotatingKey),
           rotatedAt: rotatedAt ? Number(rotatedAt) : 0,
+          features: ['channels', 'templates', 'quiet-hours', 'idempotency', 'rate-limit', 'inbound-signature', 'message-ttl'],
+          channels: (await readChannelConfigs(env)).map((c) => ({
+            id: c.id, name: c.name, enabled: c.enabled, configured: Boolean(c.webhook), webhook: maskWebhook(c.webhook),
+          })),
+          settings: await readSettings(env),
+          templates: Object.keys(await readTemplates(env)),
+          messageTtlDays: Math.max(1, Math.min(365, Number(env.MESSAGE_TTL_DAYS || 90) || 90)),
           diagnostics: {
             kvBound: Boolean(env.NOTIFICATIONS),
             kvOk,
@@ -3005,7 +4087,15 @@ export default {
             turnstileSecretKeySet: Boolean(turnstileSecretKey(env)),
             turnstileMisconfigured: turnstileMisconfigured(env),
             turnstileHostnames: turnstileHostnames(env),
+            inboundSignature: Boolean(env.INBOUND_SIGNING_SECRET),
             delivery: await readDeliverySummary(env),
+            audit: await (async () => {
+              try {
+                const raw = await env.NOTIFICATIONS.get(AUDIT_KEY);
+                const v = raw ? JSON.parse(raw) : null;
+                return (v && Array.isArray(v.items) ? v.items : []).slice(0, 5);
+              } catch (_) { return []; }
+            })(),
           },
         });
       }
@@ -3047,26 +4137,51 @@ export default {
           return json({ ok: true, unchanged: true, version });
         }
         const messages = (await listMessages(env, url.searchParams.get('limit') || 50)).map(decorateMessage);
+        // 投递明细按消息 ID 归组，供面板展示每个渠道的送达状态（C6）
+        const deliveries = {};
+        try {
+          const log = await readDeliveryLog(env);
+          for (const x of (log.items || [])) {
+            const id = x && x.eventId;
+            if (!id) continue;
+            if (!deliveries[id]) deliveries[id] = [];
+            deliveries[id].push({
+              channel: x.channel || 'wecom',
+              ok: Boolean(x.ok),
+              error: String(x.error || '').slice(0, 120),
+              ts: x.ts,
+            });
+          }
+        } catch (_) { /* 投递日志读取失败不影响消息列表 */ }
         return json({
           ok: true,
           unchanged: false,
           version,
           count: messages.length,
           messages,
+          deliveries,
         });
       }
 
       // 发送消息：POST（密钥可放 query / Header / body）
       if ((path === '/api/send' || path === '/send') && method === 'POST') {
+        const limited = await checkSendRateLimit(request, env);
+        if (limited) return limited;
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
         const body = await parseBody(request);
         if (!(await hasSendPermission(request, url, env, body))) {
           return json({ ok: false, error: 'invalid token' }, 401);
         }
-        return await createMessage(env, body);
+        return await createMessage(env, body, {
+          idempotencyKey: request.headers.get('X-Idempotency-Key'),
+        });
       }
 
       // 发送消息：GET（URL 直发）
       if ((path === '/api/send' || path === '/send') && method === 'GET') {
+        const limited = await checkSendRateLimit(request, env);
+        if (limited) return limited;
         if (!(await hasSendPermission(request, url, env))) {
           return json({ ok: false, error: 'invalid token' }, 401);
         }
@@ -3074,11 +4189,17 @@ export default {
         // title/content 的字段别名兼容逻辑仍在 createMessage 内统一处理。
         const data = Object.fromEntries(url.searchParams.entries());
         if (!data.source) data.source = 'url';
-        return await createMessage(env, data);
+        return await createMessage(env, data, {
+          idempotencyKey: request.headers.get('X-Idempotency-Key'),
+        });
       }
 
       // 测试企业微信 Webhook 连通性
       if (path === '/api/test-wecom' && method === 'POST') {
+        const limited = await checkSendRateLimit(request, env);
+        if (limited) return limited;
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
         if (!(await hasSendPermission(request, url, env))) {
           return json({ ok: false, error: 'invalid token' }, 401);
         }
@@ -3094,12 +4215,144 @@ export default {
         return json(result, result.ok ? 200 : 502);
       }
 
-      // 清空
+      // 清空（写操作：需要管理主密钥或已启用的查看验证）
       if (path === '/api/clear' && method === 'POST') {
+        if (!(await hasWritePermission(request, url, env))) {
+          return json({ ok: false, error: 'unauthorized: 需要管理权限' }, 401);
+        }
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
+        const deleted = await clearMessages(env);
+        await appendAudit(env, 'clear', 'deleted=' + deleted);
+        return json({ ok: true, deleted });
+      }
+
+      // 删除单条消息（E1）
+      const deleteMatch = path.match(/^\/api\/messages\/([A-Za-z0-9_-]{1,40})$/);
+      if (deleteMatch && method === 'DELETE') {
+        if (!(await hasWritePermission(request, url, env))) {
+          return json({ ok: false, error: 'unauthorized: 需要管理权限' }, 401);
+        }
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
+        const id = deleteMatch[1];
+        const deleted = await deleteMessage(env, id);
+        await appendAudit(env, 'message.delete', 'id=' + id + ' hit=' + deleted);
+        return json({ ok: true, deleted, id }, deleted ? 200 : 404);
+      }
+
+      // 渠道配置：读取（查看权限，Webhook 脱敏）
+      if (path === '/api/channels' && method === 'GET') {
         if (!(await hasReadPermission(request, url, env))) {
           return json({ ok: false, error: 'unauthorized' }, 401);
         }
-        return json({ ok: true, deleted: await clearMessages(env) });
+        const configs = await readChannelConfigs(env);
+        return json({
+          ok: true,
+          channels: configs.map((c) => ({
+            id: c.id, name: c.name, enabled: c.enabled,
+            configured: Boolean(c.webhook), webhook: maskWebhook(c.webhook),
+          })),
+          editable: hasAdminPermission(request, url, env),
+        });
+      }
+
+      // 渠道配置：保存（管理主密钥；支持只提交部分渠道）
+      if (path === '/api/channels' && method === 'PUT') {
+        if (!hasAdminPermission(request, url, env)) {
+          return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        }
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
+        const body = await parseBody(request);
+        const input = body && Array.isArray(body.channels) ? body.channels : body;
+        let next;
+        try {
+          const current = await readChannelConfigs(env);
+          const incoming = normalizeChannelConfigs(input);
+          next = current.map((c) => {
+            const found = incoming.find((x) => x.id === c.id);
+            return found || c;
+          });
+        } catch (e) {
+          return json({ ok: false, error: e && e.message ? e.message : '配置无效' }, 400);
+        }
+        await env.NOTIFICATIONS.put(CHANNELS_KEY, JSON.stringify(next));
+        await bumpVersion(env);
+        await appendAudit(env, 'channels.update', next.map((c) => c.id + ':' + (c.enabled ? 'on' : 'off')).join(','));
+        return json({
+          ok: true,
+          channels: next.map((c) => ({
+            id: c.id, name: c.name, enabled: c.enabled,
+            configured: Boolean(c.webhook), webhook: maskWebhook(c.webhook),
+          })),
+        });
+      }
+
+      // 指定渠道测试发送（管理主密钥）
+      if (path === '/api/channels/test' && method === 'POST') {
+        if (!hasAdminPermission(request, url, env)) {
+          return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        }
+        const body = await parseBody(request);
+        const id = String(body.id || body.channel || '').trim();
+        if (CHANNEL_IDS.indexOf(id) < 0) return json({ ok: false, error: '不支持的渠道' }, 400);
+        const configs = await readChannelConfigs(env);
+        const channel = configs.find((c) => c.id === id);
+        if (!channel || !channel.webhook) return json({ ok: false, error: '该渠道未配置 Webhook' }, 400);
+        const result = await sendChannel(channel, {
+          title: '渠道连通性测试 · ' + channel.name,
+          content: '看到这条消息即表示 ' + channel.name + ' 配置成功。',
+          source: 'test',
+          timestamp: Date.now(),
+        }, env);
+        return json(Object.assign({ ok: result.ok }, result), result.ok ? 200 : 502);
+      }
+
+      // 通知模板（读取：查看权限；保存：管理主密钥）
+      if (path === '/api/templates' && method === 'GET') {
+        if (!(await hasReadPermission(request, url, env))) {
+          return json({ ok: false, error: 'unauthorized' }, 401);
+        }
+        return json({ ok: true, templates: await readTemplates(env) });
+      }
+      if (path === '/api/templates' && method === 'PUT') {
+        if (!hasAdminPermission(request, url, env)) {
+          return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        }
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
+        const body = await parseBody(request);
+        let next;
+        try { next = normalizeTemplates(body && body.templates ? body.templates : body); }
+        catch (e) { return json({ ok: false, error: e && e.message ? e.message : '模板无效' }, 400); }
+        await env.NOTIFICATIONS.put(TEMPLATES_KEY, JSON.stringify(next));
+        await bumpVersion(env);
+        await appendAudit(env, 'templates.update', Object.keys(next).join(','));
+        return json({ ok: true, templates: next });
+      }
+
+      // 静默时段设置（读取：查看权限；保存：管理主密钥）
+      if (path === '/api/settings' && method === 'GET') {
+        if (!(await hasReadPermission(request, url, env))) {
+          return json({ ok: false, error: 'unauthorized' }, 401);
+        }
+        return json({ ok: true, settings: await readSettings(env) });
+      }
+      if (path === '/api/settings' && method === 'PUT') {
+        if (!hasAdminPermission(request, url, env)) {
+          return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        }
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
+        const body = await parseBody(request);
+        let next;
+        try { next = normalizeSettings(body && body.settings ? body.settings : body); }
+        catch (e) { return json({ ok: false, error: e && e.message ? e.message : '设置无效' }, 400); }
+        await env.NOTIFICATIONS.put(SETTINGS_KEY, JSON.stringify(next));
+        await bumpVersion(env);
+        await appendAudit(env, 'settings.update', 'quiet=' + (next.quietEnabled ? next.quietStart + '-' + next.quietEnd : 'off'));
+        return json({ ok: true, settings: next });
       }
 
       // 统计
@@ -3113,13 +4366,19 @@ export default {
       // 方糖 / Server酱 兼容：/<SEND_TOKEN>.send
       const sendMatch = path.match(/^\/([^/]+)\.send$/);
       if (sendMatch && (method === 'GET' || method === 'POST')) {
+        const limited = await checkSendRateLimit(request, env);
+        if (limited) return limited;
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, code: 1, errno: 1, error: sig.error }, 403);
         const key = decodeURIComponent(sendMatch[1]);
         const data = method === 'GET'
           ? Object.assign(Object.fromEntries(url.searchParams.entries()), {
               source: url.searchParams.get('source') || 'serverchan',
             })
           : await parseBody(request);
-        return await serverchanSend(env, key, data);
+        return await serverchanSend(env, key, data, {
+          idempotencyKey: request.headers.get('X-Idempotency-Key'),
+        });
       }
 
       // ===================== RouterHook 专用接收接口 =====================
@@ -3128,6 +4387,10 @@ export default {
       // 普通事件（manuINFO/cronINFO/ifUP/newDHCP）立即落库；rh_* 传感器进入 DO 聚合窗口。
       const rhMatch = path.match(/^\/api\/routerhook\/([^/]+)$/);
       if (rhMatch && method === 'POST') {
+        const limited = await checkSendRateLimit(request, env);
+        if (limited) return limited;
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error, success: 'failed' }, 403);
         let event;
         try { event = decodeURIComponent(rhMatch[1]); } catch (_) { event = rhMatch[1]; }
         // 事件名白名单：字母数字下划线短横线（rh_dev_<mac> 去冒号后符合）
@@ -3213,6 +4476,9 @@ export default {
 
       return json({ ok: false, error: 'not found' }, 404);
     } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        return json({ ok: false, error: '请求体过大（上限 256KB）' }, 413);
+      }
       // 不向客户端暴露内部异常细节（可能含 KV 结构/配置敏感信息）。
       // 详细堆栈写入 console，可在 Cloudflare Dashboard → Workers → Logs 查看。
       console.error('[notify] unhandled error:', err && err.stack ? err.stack : err);
