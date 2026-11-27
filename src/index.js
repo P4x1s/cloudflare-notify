@@ -46,7 +46,7 @@ import {
   decorateMessage,
 } from './messages.js';
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 
 // 登录失败限速：按 IP 计数（单 isolate 内尽力而为，生产环境建议再加 WAF 规则）
 const loginAttempts = new Map();

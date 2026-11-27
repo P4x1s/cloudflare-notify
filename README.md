@@ -12,7 +12,22 @@
 
 ![通知中心界面](docs/screenshot-notifications.png)
 
-· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md) · Webhook 接入与演进建议：[WEBHOOK.md](docs/WEBHOOK.md) · 产品改进路线图：[ROADMAP.md](docs/ROADMAP.md) · **v2.1 升级说明：[V21_RELEASE.md](docs/V21_RELEASE.md)** · v2.0 升级说明：[V20_RELEASE.md](docs/V20_RELEASE.md)
+· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md) · Webhook 接入与演进建议：[WEBHOOK.md](docs/WEBHOOK.md) · 产品改进路线图：[ROADMAP.md](docs/ROADMAP.md) · **v2.2 升级说明：[V22_RELEASE.md](docs/V22_RELEASE.md)** · v2.1 升级说明：[V21_RELEASE.md](docs/V21_RELEASE.md) · v2.0 升级说明：[V20_RELEASE.md](docs/V20_RELEASE.md)
+
+---
+
+## v2.2.0 升级摘要
+
+v2.2 增加主密钥本地保存、企微/钉钉/飞书三渠道测试入口，并完成一轮安全加固与全量测试。单文件部署方式与旧接口保持兼容。
+
+| 分类 | 新增能力 |
+| --- | --- |
+| 主密钥 | 管理主密钥可勾选「记住」保存到本机浏览器，刷新自动回填；一键清除；不进 URL、不进日志、不随导出下载 |
+| 渠道测试 | 「发送测试通知」区新增钉钉、飞书测试按钮，三者统一走 `/api/test-channel`，按各自配置状态启用 |
+| 安全 | 管理端点禁止从 URL query 取主密钥；渠道测试补齐限流、可选 HMAC 签名与审计；飞书路径式 Webhook 脱敏 |
+| 验证 | 18 套测试脚本全部通过，其中 v2.2 专项 51 项后端 + 29 项界面交互；修复 1 个真实脱敏漏洞 |
+
+完整变更见 [docs/V22_RELEASE.md](docs/V22_RELEASE.md)。升级后 `/api/status` 的 `version` 返回 `2.2.0`。
 
 ---
 
@@ -152,7 +167,9 @@ cloudflare-notify/
 | `GET` / `POST` | `/<key>.send` | key 为轮换密钥或 SEND_TOKEN | **兼容端点**（给只会填旧式 URL 的软件迁移用），`text`/`title`=标题，`desp`=正文；返回 `errno` 与 `code` 双码 |
 | `POST` | `/api/key/rotate` | **仅** SEND_TOKEN（管理主密钥） | 生成新轮换密钥并写入 KV，旧密钥立即失效；返回 `{ key }` |
 | `GET` | `/api/key/current` | **仅** SEND_TOKEN | 查看当前轮换密钥 |
-| `POST` | `/api/test-wecom` | 轮换密钥或 SEND_TOKEN | 测试企业微信 Webhook 连通性 |
+| `POST` | `/api/test-channel` | 轮换密钥或 SEND_TOKEN | 测试企微/钉钉/飞书连通性，body `{"id":"dingtalk"}` 或 `?id=feishu`；受发送限流保护 |
+| `POST` | `/api/test-wecom` | 轮换密钥或 SEND_TOKEN | 测试企业微信 Webhook 连通性（旧别名，等同 `id=wecom`） |
+| `POST` | `/api/channels/test` | **仅** SEND_TOKEN | 从渠道配置面板测试指定渠道；额外校验可选 HMAC 签名 |
 | `GET` | `/api/messages?limit=50&version=...` | `READ_TOKEN` 或会话 Cookie | 获取通知列表；带 `version` 且无变化时只返回 `unchanged` |
 | `GET` | `/api/count` | `READ_TOKEN` 或会话 Cookie | 通知总数 |
 | `POST` | `/api/clear` | `READ_TOKEN` 或会话 Cookie | 清空全部通知 |
@@ -162,7 +179,7 @@ cloudflare-notify/
 > `POST /api/login {"token":"<READ_TOKEN>"}` → 服务端校验通过后下发 `Set-Cookie: cfn_session=...`
 > （HMAC-SHA256 签名、HttpOnly、SameSite=Strict、7 天有效）。后续请求浏览器自动带上该 Cookie。
 >
-> - 密钥**不写进 localStorage**，JS 读不到，XSS 也偷不走；
+> - 会话 Cookie **不写进 localStorage**，JS 读不到，XSS 也偷不走；v2.2 起「记住主密钥」是用户显式选择，勾选后才把 `SEND_TOKEN` 存入本机 `localStorage`，可随时一键清除；
 > - Cookie 签名用的是 `READ_TOKEN` 本身，所以**改了 `READ_TOKEN`，所有旧会话立刻失效**；
 > - 直接访问 `/?token=<READ_TOKEN>` 也能进入：服务端会换发 Cookie 并 **302 到不带 token 的干净地址**，避免密钥留在浏览器历史里。
 >
@@ -251,7 +268,7 @@ GET https://你的域名/send?token=<密钥>&title={title}&content={time}&source
 | `{weekday}` | 中文星期 | `星期四` |
 | `{uuid}` | 随机 UUID | `9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d` |
 | `{random}` | 8 位随机串 | `a3f9k2lm` |
-| `{version}` | 服务版本号 | `2.1.0` |
+| `{version}` | 服务版本号 | `2.2.0` |
 | `{source}` | 当前消息来源字段 | `ci` |
 
 **自定义变量**（调用方传值，替换同名占位符；**优先于内置变量**）
@@ -297,7 +314,7 @@ curl -X POST "https://你的域名/api/send" -H "X-Token: <密钥>" \
 **生成轮换密钥**（Web 页面已内置按钮，也可用 API）：
 
 ```bash
-# 用管理主密钥鉴权生成新密钥（Header 或 query 均可）
+# 用管理主密钥鉴权生成新密钥（只接受 Header / Body，禁止放进 URL query）
 curl -X POST "https://你的域名/api/key/rotate" -H "X-Token: <SEND_TOKEN>"
 
 # 返回：{"ok":true,"key":"<64位新密钥>","hint":"..."}

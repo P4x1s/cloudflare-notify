@@ -362,7 +362,7 @@ section('E. 原有 Cloudflare Notify 功能回归');
   ok('方糖 /<key>.send 正常', r3.status === 200 && r3.body.code === 0 && r3.body.errno === 0);
   const cookie = await login(env);
   const r4 = await call('/api/status', { headers: { Cookie: cookie } }, env);
-  ok('/api/status 正常', r4.status === 200 && r4.body.ok === true && r4.body.version === '2.1.0', JSON.stringify(r4.body));
+  ok('/api/status 正常', r4.status === 200 && r4.body.ok === true && r4.body.version === '2.2.0', JSON.stringify(r4.body));
   const r5 = await call('/api/messages', { headers: { Cookie: cookie } }, env);
   ok('/api/messages 正常且有 decorate 字段', r5.status === 200 && r5.body.messages.length > 0
     && r5.body.messages[0].contentHtml !== undefined && r5.body.messages[0].isRich !== undefined);

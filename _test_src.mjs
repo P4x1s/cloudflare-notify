@@ -111,7 +111,7 @@ section('1. src/ 版本可加载且基本路由可用');
   ok('GET /api/status 返回 200', res.status === 200, 'got ' + res.status);
   const data = await res.json();
   ok('status 含 version', typeof data.version === 'string');
-  ok('version 为 2.1.0', data.version === '2.1.0', 'got ' + data.version);
+  ok('version 为 2.2.0', data.version === '2.2.0', 'got ' + data.version);
 }
 
 {

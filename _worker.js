@@ -592,6 +592,12 @@ const UI_CSS = `
     .stat-row .n { flex-basis:66px; }
     .doc-table { font-size:11px; }
   }
+
+  /* ---------- v2.2：主密钥保存开关 ---------- */
+  .remember-master { margin:8px 0 2px; font-size:12px; color:var(--muted); }
+  .remember-master input { width:auto; margin:0; accent-color:var(--primary); }
+  #masterSaveHint { min-height:16px; }
+  #forgetMasterRow { margin-top:6px; }
 `;
 
 // L3：中英文字典随页面下发，不依赖外部资源；模板注入点由 applyTurnstile 统一处理。
@@ -613,12 +619,20 @@ const I18N_JS = `
       'note.channels': '企业微信 / 钉钉 / 飞书可同时启用。Webhook 只保存在你自己的 KV，面板展示时自动脱敏。',
       'note.rules': '静默时段内的消息仍会存入通知中心，只是不推送到外部渠道。',
       'note.keys': '软件里只填轮换推送密钥；SEND_TOKEN 是管理主密钥，仅用于下方操作，不要填进软件。',
+      'label.rememberMaster': '记住主密钥（仅存本机浏览器）',
+      'hint.masterSaved': '已保存：下次打开会自动填入。公共电脑上请勿勾选。',
+      'hint.masterUnsaved': '未保存：刷新后需重新输入主密钥。',
+      'btn.forgetMaster': '清除已保存的主密钥',
+      'confirm.forgetMaster': '将立即从本机浏览器删除已保存的主密钥并清空输入框，确定继续吗？',
+      'toast.masterSaved': '主密钥已保存到本机浏览器',
+      'toast.masterCleared': '已清除本机保存的主密钥',
+      'err.masterRequired': '请先输入主密钥，再勾选记住',
       'note.send': '先填标题或内容，点「发送通知」验证链路；密钥可留空以使用浏览器保存值。',
       'note.list': '折叠时显示标题与内容摘要，点击标题行展开全文；支持按来源过滤与按时间分组。',
       'btn.copyExample': '复制示例', 'btn.copy': '复制', 'btn.copyPushUrl': '复制推送地址',
       'btn.saveChannels': '保存渠道配置', 'btn.saveRules': '保存规则', 'btn.previewVars': '预览变量',
       'btn.viewKey': '查看当前密钥', 'btn.rotateKey': '生成新密钥', 'btn.send': '发送通知',
-      'btn.copyCurl': '复制 curl', 'btn.testWecom': '测试企微', 'btn.toggleAll': '全部展开',
+      'btn.copyCurl': '复制 curl', 'btn.testWecom': '测试企微', 'btn.testDingtalk': '测试钉钉', 'btn.testFeishu': '测试飞书', 'btn.toggleAll': '全部展开',
       'btn.collapseAll': '全部折叠', 'btn.refresh': '刷新', 'btn.clear': '清空',
       'btn.exportJson': '导出 JSON', 'btn.exportCsv': '导出 CSV', 'btn.exportMd': '导出 MD',
       'label.search': '搜索标题、内容或来源…', 'empty.list': '暂无通知。用左侧表单发送一条，或调用 /send 接口。',
@@ -643,12 +657,20 @@ const I18N_JS = `
       'note.channels': 'WeCom / DingTalk / Feishu can be enabled together. Webhooks stay in your own KV and are masked in the panel.',
       'note.rules': 'Messages during quiet hours are still stored, only outbound pushes are skipped.',
       'note.keys': 'Put only the rotating key in your apps. SEND_TOKEN is the admin key — never paste it into clients.',
+      'label.rememberMaster': 'Remember admin key (this browser only)',
+      'hint.masterSaved': 'Saved: it will be filled in next time. Do not enable on a shared computer.',
+      'hint.masterUnsaved': 'Not saved: you will need to enter it again after a refresh.',
+      'btn.forgetMaster': 'Forget saved admin key',
+      'confirm.forgetMaster': 'This removes the saved admin key from this browser and clears the input. Continue?',
+      'toast.masterSaved': 'Admin key saved in this browser',
+      'toast.masterCleared': 'Saved admin key removed',
+      'err.masterRequired': 'Enter the admin key before enabling remember',
       'note.send': 'Enter a title or body and click Send. Leave the key blank to use the saved one.',
       'note.list': 'Click a row to expand. Search, source filters and day grouping are supported.',
       'btn.copyExample': 'Copy sample', 'btn.copy': 'Copy', 'btn.copyPushUrl': 'Copy push URL',
       'btn.saveChannels': 'Save channels', 'btn.saveRules': 'Save rules', 'btn.previewVars': 'Preview vars',
       'btn.viewKey': 'Show current key', 'btn.rotateKey': 'Rotate key', 'btn.send': 'Send',
-      'btn.copyCurl': 'Copy curl', 'btn.testWecom': 'Test WeCom', 'btn.toggleAll': 'Expand all',
+      'btn.copyCurl': 'Copy curl', 'btn.testWecom': 'Test WeCom', 'btn.testDingtalk': 'Test DingTalk', 'btn.testFeishu': 'Test Feishu', 'btn.toggleAll': 'Expand all',
       'btn.collapseAll': 'Collapse all', 'btn.refresh': 'Refresh', 'btn.clear': 'Clear',
       'btn.exportJson': 'Export JSON', 'btn.exportCsv': 'Export CSV', 'btn.exportMd': 'Export MD',
       'label.search': 'Search title, body or source…', 'empty.list': 'No messages yet. Send one below or call /send.',
@@ -872,6 +894,11 @@ const UI_HTML = `<!DOCTYPE html>
           <p class="tool-note" data-i18n="note.keys">软件里只填轮换推送密钥；SEND_TOKEN 是管理主密钥，仅用于下方操作，不要填进软件。</p>
           <label for="fMasterToken">管理主密钥 SEND_TOKEN</label>
           <input id="fMasterToken" type="password" placeholder="仅用于生成 / 查看轮换密钥" autocomplete="off" />
+          <label class="switch remember-master"><input type="checkbox" id="chkRememberMaster" /><span data-i18n="label.rememberMaster">记住主密钥（仅存本机浏览器）</span></label>
+          <div class="hint" id="masterSaveHint"></div>
+          <div class="row" id="forgetMasterRow" style="display:none">
+            <button class="ghost danger" id="btnForgetMaster" data-i18n="btn.forgetMaster">清除已保存的主密钥</button>
+          </div>
           <div class="hint" id="keyStatus">正在读取轮换密钥状态…</div>
           <div class="row">
             <button class="ghost" id="btnViewKey">查看当前密钥</button>
@@ -886,6 +913,7 @@ const UI_HTML = `<!DOCTYPE html>
           <div class="tool-head">
             <h2 data-i18n="sec.send">发送测试通知</h2>
             <span class="tool-badge" id="wecomBadge">企微 —</span>
+            <span class="tool-badge" id="sendChannelsBadge">渠道 —</span>
           </div>
           <p class="tool-note" data-i18n="note.send">先填标题或内容，点「发送通知」验证链路；密钥可留空以使用浏览器保存值。</p>
           <label for="fTitle">标题</label>
@@ -898,7 +926,9 @@ const UI_HTML = `<!DOCTYPE html>
           <div class="row">
             <button class="primary" id="btnSend">发送通知</button>
             <button class="ghost" id="btnCopyCurl">复制 curl</button>
-            <button class="ghost" id="btnTestWecom">测试企微</button>
+            <button class="ghost" id="btnTestWecom" data-i18n="btn.testWecom">测试企微</button>
+            <button class="ghost" id="btnTestDingtalk" data-i18n="btn.testDingtalk">测试钉钉</button>
+            <button class="ghost" id="btnTestFeishu" data-i18n="btn.testFeishu">测试飞书</button>
           </div>
           <div class="inline-status" id="sendFeedback" role="status"></div>
           <div class="hint" id="wecomHint"></div>
@@ -1036,9 +1066,41 @@ const UI_HTML = `<!DOCTYPE html>
     $('btnConfirmCancel').onclick = cleanup;
   }
 
+  // v2.2：主密钥保存是本机的显式选择，仅在用户勾选时写入 localStorage；
+  // 不进 URL、不进日志、不随导出文件下载。公共设备可一键清除。
+  var MASTER_KEY_STORAGE = 'cfn_master_token';
   function masterToken() {
     return $('fMasterToken') ? $('fMasterToken').value.trim() : '';
   }
+  function savedMaster() {
+    try { return localStorage.getItem(MASTER_KEY_STORAGE) || ''; } catch (e) { return ''; }
+  }
+  function updateMasterSaveUi() {
+    var saved = savedMaster();
+    var chk = $('chkRememberMaster');
+    if (!chk) return;
+    chk.checked = Boolean(saved);
+    var row = $('forgetMasterRow');
+    if (row) row.style.display = saved ? 'flex' : 'none';
+    var hint = $('masterSaveHint');
+    if (hint) hint.textContent = T(saved ? 'hint.masterSaved' : 'hint.masterUnsaved');
+    var forget = $('btnForgetMaster');
+    if (forget) forget.textContent = T('btn.forgetMaster');
+  }
+  function persistMaster() {
+    var v = masterToken();
+    var remember = $('chkRememberMaster') && $('chkRememberMaster').checked;
+    try {
+      if (v && remember) localStorage.setItem(MASTER_KEY_STORAGE, v);
+      else localStorage.removeItem(MASTER_KEY_STORAGE);
+    } catch (e) { /* 隐私模式下 localStorage 不可用时静默降级为不保存 */ }
+    updateMasterSaveUi();
+  }
+  (function restoreMaster() {
+    var saved = savedMaster();
+    if (saved && $('fMasterToken') && !$('fMasterToken').value) $('fMasterToken').value = saved;
+    updateMasterSaveUi();
+  })();
 
   // 推送接入示例目录：所有端点与字段别名均与 worker.js 服务端实现一致。
   // 生成时用 location.origin 与当前轮换密钥，避免写死域名/密钥。
@@ -1657,16 +1719,39 @@ const UI_HTML = `<!DOCTYPE html>
       $('sendHint').textContent = s.needSendToken
         ? '服务端要求发送密钥：填入 SEND_TOKEN 或轮换密钥。'
         : '服务端未要求发送密钥，可直接发送。';
-      $('wecomHint').textContent = s.wecomConfigured
+      var cfgOf = function (id) {
+        return (s.channels || []).find(function (c) { return c.id === id; }) || null;
+      };
+      var wecomCfg = cfgOf('wecom');
+      var wecomReady = Boolean(s.wecomConfigured || (wecomCfg && wecomCfg.configured));
+      $('wecomHint').textContent = wecomReady
         ? '新消息会同步推到企业微信群。'
-        : '未配置 WECOM_WEBHOOK，可在 Worker Secrets 中设置后开启推送。';
+        : '未配置 WECOM_WEBHOOK，可在 Worker Secrets 或渠道面板中设置后开启推送。';
       var wb = $('wecomBadge');
-      wb.textContent = s.wecomConfigured ? '企微已开启' : '企微未配置';
-      wb.className = 'tool-badge' + (s.wecomConfigured ? ' on' : '');
-      $('btnTestWecom').disabled = !s.wecomConfigured;
-      $('btnTestWecom').title = s.wecomConfigured
-        ? '向企业微信群发送一条测试消息'
-        : '未配置 WECOM_WEBHOOK，无法测试';
+      wb.textContent = wecomReady ? '企微已开启' : '企微未配置';
+      wb.className = 'tool-badge' + (wecomReady ? ' on' : '');
+      // v2.2：三个渠道的测试按钮按各自配置状态独立启用，不再依赖企微 Webhook。
+      var ids = [
+        ['btnTestWecom', 'wecom', '企业微信'],
+        ['btnTestDingtalk', 'dingtalk', '钉钉'],
+        ['btnTestFeishu', 'feishu', '飞书'],
+      ];
+      var ready = 0;
+      ids.forEach(function (item) {
+        var btn = $(item[0]);
+        if (!btn) return;
+        var c = cfgOf(item[1]);
+        var on = Boolean(c && c.configured);
+        if (on) ready++;
+        btn.disabled = !on;
+        btn.title = on ? '向' + item[2] + '群发送一条测试消息' : '未配置' + item[2] + ' Webhook，无法测试';
+        if (window.I18N) btn.textContent = T('btn.test' + item[1].charAt(0).toUpperCase() + item[1].slice(1));
+      });
+      var cb = $('sendChannelsBadge');
+      if (cb) {
+        cb.textContent = ready + '/' + ids.length + ' 渠道可用';
+        cb.className = 'tool-badge' + (ready ? ' on' : '');
+      }
       renderDiagnostics(s);
       renderKeyStatus(s);
       renderServerchanUrl();
@@ -1866,7 +1951,10 @@ const UI_HTML = `<!DOCTYPE html>
   }
 
   function loadChannels() {
-    return api('/api/channels').then(function (data) {
+    // 带主密钥读取配置：保存过主密钥时面板直接进入可编辑模式，不必再次手工输入。
+    var mt = masterToken();
+    var headers = mt ? { 'X-Token': mt } : {};
+    return api('/api/channels', { headers: headers }).then(function (data) {
       state.channels = data.channels || [];
       state.adminMode = Boolean(data.editable);
       renderChannels();
@@ -2106,6 +2194,26 @@ const UI_HTML = `<!DOCTYPE html>
     });
   });
 
+  // ---------- v2.2：主密钥保存 ----------
+  if ($('chkRememberMaster')) $('chkRememberMaster').addEventListener('change', function () {
+    if (this.checked && !masterToken()) {
+      this.checked = false;
+      setInline('keyFeedback', 'err', T('err.masterRequired'));
+      return;
+    }
+    persistMaster();
+    setInline('keyFeedback', 'ok', T(this.checked ? 'toast.masterSaved' : 'toast.masterCleared'));
+  });
+  if ($('fMasterToken')) $('fMasterToken').addEventListener('change', persistMaster);
+  if ($('btnForgetMaster')) $('btnForgetMaster').addEventListener('click', function () {
+    confirmAction(T('btn.forgetMaster'), T('confirm.forgetMaster'), function () {
+      try { localStorage.removeItem(MASTER_KEY_STORAGE); } catch (e) {}
+      $('fMasterToken').value = '';
+      updateMasterSaveUi();
+      setInline('keyFeedback', 'ok', T('toast.masterCleared'));
+    });
+  });
+
   $('btnCopyIntg').addEventListener('click', function () {
     var text = $('intgCode').textContent;
     if (!text) { setInline('intgStatus', 'err', '示例为空，请刷新页面后重试。'); return; }
@@ -2166,23 +2274,38 @@ const UI_HTML = `<!DOCTYPE html>
   $('scUrl').addEventListener('click', copyScUrl);
   $('btnCopyScUrl').addEventListener('click', copyScUrl);
 
-  $('btnTestWecom').addEventListener('click', function () {
-    var btn = this;
-    var token = $('fSendToken').value.trim() || state.sendToken;
+  // v2.2：三个渠道统一走 /api/test-channel，用发送密钥即可；测试请求同样受限流与可选签名保护。
+  function runChannelTest(id, name, btn) {
+    var token = $('fSendToken').value.trim() || state.sendToken || masterToken();
     btn.disabled = true;
-    setInline('sendFeedback', 'info', '正在测试企业微信推送…');
-    var headers = {};
+    setInline('sendFeedback', 'info', '正在测试' + name + '推送…');
+    var headers = { 'Content-Type': 'application/json' };
     if (token) headers['X-Token'] = token;
-    fetch('/api/test-wecom', { method: 'POST', headers: headers, credentials: 'same-origin' }).then(function (r) {
+    fetch('/api/test-channel', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({ id: id }),
+      credentials: 'same-origin'
+    }).then(function (r) {
       return r.json().then(function (d) { return { s: r.status, d: d }; });
     }).then(function (res) {
       if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
-      setInline('sendFeedback', 'ok', '测试消息已发到企业微信群，请查收。');
+      setInline('sendFeedback', 'ok', '测试消息已发到' + name + '，请查收。');
     }).catch(function (err) {
-      setInline('sendFeedback', 'err', '企微测试失败：' + friendlyAuthError(err));
+      setInline('sendFeedback', 'err', name + '测试失败：' + friendlyAuthError(err));
     }).finally(function () {
-      btn.disabled = false;
+      // 未配置的渠道保持禁用，配置过的恢复可点。
+      var c = (state.status && state.status.channels || []).find(function (x) { return x.id === id; });
+      btn.disabled = !(c && c.configured);
     });
+  }
+  [
+    ['btnTestWecom', 'wecom', '企业微信'],
+    ['btnTestDingtalk', 'dingtalk', '钉钉'],
+    ['btnTestFeishu', 'feishu', '飞书'],
+  ].forEach(function (item) {
+    var btn = $(item[0]);
+    if (btn) btn.addEventListener('click', function () { runChannelTest(item[1], item[2], this); });
   });
 
   function showRotatedKey(key, isNew) {
@@ -2928,11 +3051,27 @@ async function hasSendPermission(request, url, env, body) {
   return Boolean(current) && timingSafeEqual(token, current);
 }
 
-/** 管理操作鉴权：只认管理主密钥 SEND_TOKEN，轮换密钥无权调用 */
+/**
+ * 管理凭据只从 Header / Authorization / Body 读取，禁止走 URL query。
+ * 原因：query 会进入浏览器历史、Referer、CDN 与网关日志，主密钥一旦出现在 URL 即视为泄露。
+ */
+function extractAdminToken(request, body) {
+  const fromHeader = request.headers.get('X-Token');
+  if (fromHeader) return fromHeader;
+  const auth = request.headers.get('Authorization') || '';
+  if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
+  if (body && typeof body === 'object') {
+    const fromBody = body.token || body.sendkey || body.key;
+    if (fromBody) return String(fromBody);
+  }
+  return null;
+}
+
+/** 管理操作鉴权：只认管理主密钥 SEND_TOKEN，轮换密钥无权调用，且不接受 URL 中的 token */
 function hasAdminPermission(request, url, env, body) {
   const master = String(env.SEND_TOKEN || '').trim();
   if (!master) return false;
-  const token = extractToken(request, url, body);
+  const token = extractAdminToken(request, body);
   return Boolean(token) && timingSafeEqual(token, master);
 }
 
@@ -3224,7 +3363,11 @@ function normalizeWebhook(value) {
 function maskWebhook(url) {
   const s = String(url || '');
   if (!s) return '';
-  return s.replace(/([?&](?:key|token|access_token|secret)=)[^&\s]+/gi, '$1***');
+  return s
+    // query 形态：企业微信 key / 钉钉 access_token 等
+    .replace(/([?&](?:key|token|access_token|secret)=)[^&\s]+/gi, '$1***')
+    // 路径形态：飞书 /open-apis/bot/v2/hook/<token>，以及通用 /hook/<token>
+    .replace(/(\/(?:hook|v2\/hook)\/)[A-Za-z0-9_-]{8,}/gi, '$1***');
 }
 
 function defaultChannelConfigs(env) {
@@ -4455,7 +4598,7 @@ export class RouterHookSensorDO extends DOBase {
   }
 }
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 
 // ============================== L5 开放 API 描述 ==============================
 function apiOp(summary, parameters, extra) {
@@ -4477,7 +4620,7 @@ const OPENAPI_SPEC = {
   info: {
     title: 'Cloudflare Notify API',
     version: VERSION,
-    description: '自研单文件通知中心。除 /docs 与 /openapi.json 外，所有端点需密钥鉴权；管理类端点仅认管理主密钥 SEND_TOKEN。',
+    description: '自研单文件通知中心。除 /docs 与 /openapi.json 外，所有端点需密钥鉴权；管理类端点仅认管理主密钥 SEND_TOKEN，且只接受 Header/Body，不接受 URL query。',
   },
   servers: [{ url: '/' }],
   components: {
@@ -4520,7 +4663,13 @@ const OPENAPI_SPEC = {
       put: apiOp('保存渠道配置（管理主密钥）', [H_TENANT]),
     },
     '/api/channels/test': {
-      post: apiOp('测试指定渠道连通性（管理主密钥）', [H_TENANT]),
+      post: apiOp('测试指定渠道连通性（管理主密钥，不可从 URL 传密钥）', [H_TENANT]),
+    },
+    '/api/test-channel': {
+      post: apiOp('测试企微/钉钉/飞书连通性（发送密钥即可）', [H_TENANT, { name: 'id', in: 'query', required: false, description: 'wecom / dingtalk / feishu，默认 wecom；也可放 JSON body' }]),
+    },
+    '/api/test-wecom': {
+      post: apiOp('测试企业微信连通性（旧别名，等同 /api/test-channel?id=wecom）', [H_TENANT]),
     },
     '/api/templates': {
       get: apiOp('读取通知模板', [H_TENANT]),
@@ -4574,7 +4723,8 @@ function renderDocsHtml() {
     '<a class="ghost" href="/openapi.json">OpenAPI JSON</a></div></header>' +
     '<div class="panel"><section class="section">' +
     '<h2>鉴权方式</h2><p class="tool-note">发送与读取端点接受 <code>X-Token</code> Header、<code>Authorization: Bearer</code> 或 <code>?token=</code>。' +
-    '管理类端点（配置、轮换、租户）只认 <code>SEND_TOKEN</code>。所有写操作同时支持可选 HMAC 入站签名与 256KB 请求体上限。</p>' +
+    '管理类端点（配置、轮换、租户）只认 <code>SEND_TOKEN</code>，且只接受 Header / Body，<b>不接受 URL query</b>，避免主密钥进入日志。' +
+    '所有写操作同时支持可选 HMAC 入站签名与 256KB 请求体上限。</p>' +
     '<h2>端点一览</h2><div class="doc-table"><table><thead><tr><th>方法</th><th>路径</th><th>说明</th><th>主要参数</th></tr></thead>' +
     '<tbody>' + rows.join('') + '</tbody></table></div></section></div></div></body></html>';
 }
@@ -4707,7 +4857,7 @@ export default {
           wecomConfigured: Boolean(env.WECOM_WEBHOOK),
           rotatingKeyReady: Boolean(rotatingKey),
           rotatedAt: rotatedAt ? Number(rotatedAt) : 0,
-          features: ['channels', 'templates', 'quiet-hours', 'idempotency', 'rate-limit', 'inbound-signature', 'message-ttl'],
+          features: ['channels', 'test-channels', 'templates', 'quiet-hours', 'idempotency', 'rate-limit', 'inbound-signature', 'message-ttl', 'export', 'stats', 'i18n', 'api-docs', 'tenants'],
           channels: (await readChannelConfigs(env)).map((c) => ({
             id: c.id, name: c.name, enabled: c.enabled, configured: Boolean(c.webhook), webhook: maskWebhook(c.webhook),
           })),
@@ -4835,8 +4985,9 @@ export default {
         });
       }
 
-      // 测试企业微信 Webhook 连通性
-      if (path === '/api/test-wecom' && method === 'POST') {
+      // 渠道连通性测试：企微 / 钉钉 / 飞书共用一套鉴权、限流与签名校验。
+      // /api/test-wecom 保留为旧别名（默认 wecom），新面板三个按钮统一调用 /api/test-channel。
+      if ((path === '/api/test-wecom' || path === '/api/test-channel') && method === 'POST') {
         const limited = await checkSendRateLimit(request, env);
         if (limited) return limited;
         const sig = await verifyInboundSignature(request, env);
@@ -4844,16 +4995,24 @@ export default {
         if (!(await hasSendPermission(request, url, env))) {
           return json({ ok: false, error: 'invalid token' }, 401);
         }
-        if (!String(env.WECOM_WEBHOOK || '').trim()) {
-          return json({ ok: false, error: '未配置 WECOM_WEBHOOK' }, 400);
+        const testBody = await parseBody(request);
+        const asked = String(
+          (testBody && (testBody.id || testBody.channel)) || url.searchParams.get('id') || 'wecom'
+        ).trim().toLowerCase();
+        if (CHANNEL_IDS.indexOf(asked) < 0) return json({ ok: false, error: '不支持的渠道' }, 400);
+        const configs = await readChannelConfigs(env);
+        const channel = configs.find((c) => c.id === asked);
+        if (!channel || !channel.webhook) {
+          return json({ ok: false, error: '未配置 ' + (CHANNEL_NAMES[asked] || asked) + ' Webhook' }, 400);
         }
-        const result = await pushToWecom(env, {
-          title: '企业微信推送测试',
+        const result = await sendChannel(channel, {
+          title: (CHANNEL_NAMES[asked] || asked) + '推送测试',
           content: '看到这条消息即表示 Webhook 配置成功。',
           source: 'test',
           timestamp: Date.now(),
-        });
-        return json(result, result.ok ? 200 : 502);
+        }, env);
+        await appendAudit(env, 'channel.test', 'id=' + asked + ' ok=' + (result.ok ? 1 : 0));
+        return json(Object.assign({ id: asked }, result), result.ok ? 200 : 502);
       }
 
       // 清空（写操作：需要管理主密钥或已启用的查看验证）
@@ -4930,11 +5089,15 @@ export default {
         });
       }
 
-      // 指定渠道测试发送（管理主密钥）
+      // 指定渠道测试发送（管理主密钥；与配置保存同级保护：限流 + 可选签名 + 审计）
       if (path === '/api/channels/test' && method === 'POST') {
         if (!hasAdminPermission(request, url, env)) {
           return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
         }
+        const limited = await checkSendRateLimit(request, env);
+        if (limited) return limited;
+        const sig = await verifyInboundSignature(request, env);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
         const body = await parseBody(request);
         const id = String(body.id || body.channel || '').trim();
         if (CHANNEL_IDS.indexOf(id) < 0) return json({ ok: false, error: '不支持的渠道' }, 400);
@@ -4947,6 +5110,7 @@ export default {
           source: 'test',
           timestamp: Date.now(),
         }, env);
+        await appendAudit(env, 'channel.test', 'id=' + id + ' ok=' + (result.ok ? 1 : 0));
         return json(Object.assign({ ok: result.ok }, result), result.ok ? 200 : 502);
       }
 

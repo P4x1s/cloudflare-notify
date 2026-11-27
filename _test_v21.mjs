@@ -55,7 +55,7 @@ section('1. L5 开放 API 文档');
   const { env } = makeEnv();
   const spec = await call('/openapi.json', {}, env);
   ok('OpenAPI 版本为 3.0.3', spec.status === 200 && spec.body.openapi === '3.0.3', JSON.stringify(spec.body).slice(0, 120));
-  ok('规范包含 v2.1 版本号', spec.body.info.version === '2.1.0', spec.body.info.version);
+  ok('规范包含 v2.2 版本号', spec.body.info.version === '2.2.0', spec.body.info.version);
   ok('规范覆盖导出/统计/租户端点', ['/api/export', '/api/stats', '/api/tenants'].every((p) => spec.body.paths[p]));
   const docs = await call('/docs', {}, env);
   ok('文档页公开可访问', docs.status === 200 && docs.ct.includes('text/html'), docs.ct);

@@ -76,7 +76,7 @@ section('A. 内置变量');
   const tms = Number(parts[4]);
   ok('{timestamp_ms} 毫秒级且在合理区间', tms >= before - 1000 && tms <= after + 1000, String(tms));
   ok('{weekday} 中文星期', /^星期[日一二三四五六]$/.test(parts[5]), parts[5]);
-  ok('{version} 展开为版本号', parts[6] === '2.1.0', parts[6]);
+  ok('{version} 展开为版本号', parts[6] === '2.2.0', parts[6]);
   ok('{source} 展开为来源', parts[7] === 'ci', parts[7]);
 
   // GMT+8：date 应等于现在 +8h 的 UTC 日期
