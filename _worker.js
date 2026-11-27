@@ -541,6 +541,203 @@ const UI_CSS = `
   }
   @media (min-width: 601px) { .bottom-bar { display:none; } }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+  /* ---------- v2.1：U4 语法高亮 / E7 登录页 / L4 统计 / L5 文档 ---------- */
+  .code-body { display:flex; gap:9px; }
+  .code-ln { flex:0 0 auto; text-align:right; color:var(--muted); opacity:.55; user-select:none;
+    font-size:11px; line-height:1.75; border-right:1px solid var(--line); padding-right:8px; }
+  .intg-code { flex:1 1 auto; min-width:0; white-space:pre-wrap; word-break:break-all; }
+  .tok-kw { color:#c678dd; font-weight:600; }
+  .tok-str { color:#3b9b6b; }
+  .tok-com { color:#8b949e; font-style:italic; }
+  .tok-num { color:#d19a66; }
+  :root[data-theme="light"] .tok-kw { color:#a626a4; }
+  :root[data-theme="light"] .tok-str { color:#0a7a45; }
+  :root[data-theme="light"] .tok-com { color:#7a7f87; }
+  :root[data-theme="light"] .tok-num { color:#b8641b; }
+  .code-more { display:inline-block; margin-top:6px; font-size:11px; color:var(--primary); cursor:pointer; }
+  .code-more:hover { text-decoration:underline; }
+
+  .stats-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:14px; }
+  .stat-card { background:var(--bg); border:var(--line); border-radius:10px; padding:12px; }
+  .stat-card .v { font-size:20px; font-weight:700; line-height:1.2; }
+  .stat-card .k { font-size:11px; color:var(--muted); margin-top:4px; }
+  .stat-block { margin-top:12px; }
+  .stat-block h3 { font-size:12px; margin:0 0 8px; color:var(--muted); font-weight:600; }
+  .stat-bars { display:flex; align-items:flex-end; gap:3px; height:76px; }
+  .stat-bar { flex:1 1 0; min-width:2px; background:var(--primary); opacity:.75; border-radius:3px 3px 0 0; position:relative; }
+  .stat-bar:hover { opacity:1; }
+  .stat-row { display:flex; align-items:center; gap:8px; font-size:11.5px; margin:5px 0; }
+  .stat-row .n { flex:0 0 88px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .stat-row .track { flex:1 1 auto; height:8px; background:var(--bg); border-radius:4px; overflow:hidden; }
+  .stat-row .fill { height:100%; background:var(--primary); border-radius:4px; }
+  .stat-row .c { flex:0 0 44px; text-align:right; color:var(--muted); }
+
+  .doc-table { overflow-x:auto; }
+  .doc-table table { width:100%; border-collapse:collapse; font-size:12px; }
+  .doc-table th, .doc-table td { text-align:left; padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .doc-table th { color:var(--muted); font-weight:600; }
+  .doc-verb { display:inline-block; min-width:46px; text-align:center; padding:2px 6px; border-radius:5px;
+    font-size:10px; font-weight:700; color:#fff; background:#4f8cff; }
+  .doc-verb.post { background:#2e9e6b; }
+  .doc-verb.put { background:#d99a2b; }
+  .doc-verb.delete { background:#d9534f; }
+
+  .auth-back { display:inline-block; margin-top:16px; font-size:12px; color:var(--primary); }
+  .auth-lead { font-size:12.5px; line-height:1.75; color:var(--muted); }
+  .auth-err.show { display:block !important; }
+
+  @media (max-width: 600px) {
+    .stats-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .stat-row .n { flex-basis:66px; }
+    .doc-table { font-size:11px; }
+  }
+`;
+
+// L3：中英文字典随页面下发，不依赖外部资源；模板注入点由 applyTurnstile 统一处理。
+const I18N_JS = `
+(function (w) {
+  'use strict';
+  var D = {
+    zh: {
+      'app.name': '通知中心',
+      'app.sub': '免费、免服务器的消息通知',
+      'nav.integration': '接入', 'nav.channels': '渠道', 'nav.rules': '规则', 'nav.keys': '密钥',
+      'nav.send': '发送', 'nav.list': '通知', 'nav.stats': '统计', 'nav.docs': 'API 文档',
+      'header.theme': '主题', 'header.diag': '配置自检', 'header.logout': '退出', 'header.lang': 'EN',
+      'status.connecting': '正在连接…', 'status.live': '已连接', 'status.error': '连接失败',
+      'sec.integration': '推送接入', 'sec.channels': '通知渠道', 'sec.rules': '规则与模板',
+      'sec.keys': '密钥与轮换', 'sec.send': '发送测试通知', 'sec.list': '最近通知', 'sec.stats': '统计看板',
+      'badge.ways': '9 种方式', 'badge.optional': '可选',
+      'note.integration': '点标签查看示例，复制后把示例里的密钥换成下方生成的轮换推送密钥即可。',
+      'note.channels': '企业微信 / 钉钉 / 飞书可同时启用。Webhook 只保存在你自己的 KV，面板展示时自动脱敏。',
+      'note.rules': '静默时段内的消息仍会存入通知中心，只是不推送到外部渠道。',
+      'note.keys': '软件里只填轮换推送密钥；SEND_TOKEN 是管理主密钥，仅用于下方操作，不要填进软件。',
+      'note.send': '先填标题或内容，点「发送通知」验证链路；密钥可留空以使用浏览器保存值。',
+      'note.list': '折叠时显示标题与内容摘要，点击标题行展开全文；支持按来源过滤与按时间分组。',
+      'btn.copyExample': '复制示例', 'btn.copy': '复制', 'btn.copyPushUrl': '复制推送地址',
+      'btn.saveChannels': '保存渠道配置', 'btn.saveRules': '保存规则', 'btn.previewVars': '预览变量',
+      'btn.viewKey': '查看当前密钥', 'btn.rotateKey': '生成新密钥', 'btn.send': '发送通知',
+      'btn.copyCurl': '复制 curl', 'btn.testWecom': '测试企微', 'btn.toggleAll': '全部展开',
+      'btn.collapseAll': '全部折叠', 'btn.refresh': '刷新', 'btn.clear': '清空',
+      'btn.exportJson': '导出 JSON', 'btn.exportCsv': '导出 CSV', 'btn.exportMd': '导出 MD',
+      'label.search': '搜索标题、内容或来源…', 'empty.list': '暂无通知。用左侧表单发送一条，或调用 /send 接口。',
+      'empty.filter': '没有匹配的通知，试试调整搜索词或来源过滤。',
+      'stats.total': '累计消息', 'stats.today': '今日消息', 'stats.sources': '来源分布',
+      'stats.channels': '渠道投递', 'stats.rate': '成功率', 'stats.sample': '基于最近 {n} 条统计',
+      'login.title': '访问验证', 'login.lead': '该通知服务已开启查看验证。请输入查看密钥（READ_TOKEN）以查看通知与接入地址。',
+      'login.token': '查看密钥', 'login.enter': '进入通知中心', 'login.err': '验证失败',
+      'toast.refreshed': '已刷新', 'toast.copied': '已复制', 'toast.exported': '已生成导出文件'
+    },
+    en: {
+      'app.name': 'Notification Center',
+      'app.sub': 'Free, serverless message notifications',
+      'nav.integration': 'Integrations', 'nav.channels': 'Channels', 'nav.rules': 'Rules', 'nav.keys': 'Keys',
+      'nav.send': 'Send', 'nav.list': 'Messages', 'nav.stats': 'Stats', 'nav.docs': 'API Docs',
+      'header.theme': 'Theme', 'header.diag': 'Diagnostics', 'header.logout': 'Sign out', 'header.lang': '中文',
+      'status.connecting': 'Connecting…', 'status.live': 'Connected', 'status.error': 'Connection failed',
+      'sec.integration': 'Push integrations', 'sec.channels': 'Channels', 'sec.rules': 'Rules & templates',
+      'sec.keys': 'Keys & rotation', 'sec.send': 'Send a test', 'sec.list': 'Recent messages', 'sec.stats': 'Statistics',
+      'badge.ways': '9 ways', 'badge.optional': 'Optional',
+      'note.integration': 'Pick a tab, copy the sample, then replace the key with the rotating key generated below.',
+      'note.channels': 'WeCom / DingTalk / Feishu can be enabled together. Webhooks stay in your own KV and are masked in the panel.',
+      'note.rules': 'Messages during quiet hours are still stored, only outbound pushes are skipped.',
+      'note.keys': 'Put only the rotating key in your apps. SEND_TOKEN is the admin key — never paste it into clients.',
+      'note.send': 'Enter a title or body and click Send. Leave the key blank to use the saved one.',
+      'note.list': 'Click a row to expand. Search, source filters and day grouping are supported.',
+      'btn.copyExample': 'Copy sample', 'btn.copy': 'Copy', 'btn.copyPushUrl': 'Copy push URL',
+      'btn.saveChannels': 'Save channels', 'btn.saveRules': 'Save rules', 'btn.previewVars': 'Preview vars',
+      'btn.viewKey': 'Show current key', 'btn.rotateKey': 'Rotate key', 'btn.send': 'Send',
+      'btn.copyCurl': 'Copy curl', 'btn.testWecom': 'Test WeCom', 'btn.toggleAll': 'Expand all',
+      'btn.collapseAll': 'Collapse all', 'btn.refresh': 'Refresh', 'btn.clear': 'Clear',
+      'btn.exportJson': 'Export JSON', 'btn.exportCsv': 'Export CSV', 'btn.exportMd': 'Export MD',
+      'label.search': 'Search title, body or source…', 'empty.list': 'No messages yet. Send one below or call /send.',
+      'empty.filter': 'No matching messages. Try another keyword or source filter.',
+      'stats.total': 'Total messages', 'stats.today': 'Today', 'stats.sources': 'Sources',
+      'stats.channels': 'Delivery', 'stats.rate': 'Success rate', 'stats.sample': 'Based on the latest {n} messages',
+      'login.title': 'Access verification', 'login.lead': 'This notification service requires verification. Enter READ_TOKEN to view messages and integration URLs.',
+      'login.token': 'Read token', 'login.enter': 'Enter notification center', 'login.err': 'Verification failed',
+      'toast.refreshed': 'Refreshed', 'toast.copied': 'Copied', 'toast.exported': 'Export file generated'
+    }
+  };
+  function lang() { try { return localStorage.getItem('cfn_lang') === 'en' ? 'en' : 'zh'; } catch (e) { return 'zh'; } }
+  function setLang(v) { try { localStorage.setItem('cfn_lang', v); } catch (e) {} }
+  function t(k, vars) {
+    var d = D[lang()] || D.zh;
+    var s = d[k] != null ? d[k] : (D.zh[k] != null ? D.zh[k] : k);
+    if (vars) for (var key in vars) s = s.split('{' + key + '}').join(vars[key]);
+    return s;
+  }
+  function apply(root) {
+    var scope = root || document;
+    var a = scope.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < a.length; i++) a[i].textContent = t(a[i].getAttribute('data-i18n'));
+    var b = scope.querySelectorAll('[data-i18n-ph]');
+    for (var j = 0; j < b.length; j++) b[j].setAttribute('placeholder', t(b[j].getAttribute('data-i18n-ph')));
+    var c = scope.querySelectorAll('[data-i18n-title]');
+    for (var k = 0; k < c.length; k++) c[k].setAttribute('title', t(c[k].getAttribute('data-i18n-title')));
+    document.documentElement.lang = lang() === 'en' ? 'en' : 'zh-CN';
+  }
+  w.I18N = { t: t, apply: apply, lang: lang, setLang: setLang, dict: D };
+})(window);
+`;
+
+// U4：纯前端轻量高亮器（关键字/字符串/注释/数字四类），无依赖、无外部资源。
+const HIGHLIGHT_JS = `
+(function (w) {
+  'use strict';
+  var NL = String.fromCharCode(10);
+  var BS = String.fromCharCode(92);
+  var KW = {};
+  ('curl import from const let var function return await async if else for in of new print run name uses with method headers json body data true false null None True False --data-urlencode pip install').split(' ').forEach(function (k) { KW[k] = 1; });
+  function esc(s) {
+    s = s.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
+    s = s.split('"').join('&quot;').split(String.fromCharCode(39)).join('&#39;');
+    return s;
+  }
+  function wordStart(c) { return /[A-Za-z_$]/.test(c); }
+  function wordChar(c) { return /[A-Za-z0-9_$]/.test(c); }
+  function highlight(src) {
+    var s = String(src || '');
+    var out = '';
+    var i = 0;
+    while (i < s.length) {
+      var c = s.charAt(i);
+      if (c === '#' || (c === '/' && s.charAt(i + 1) === '/')) {
+        var j = i;
+        while (j < s.length && s.charAt(j) !== NL) j++;
+        out += '<span class="tok-com">' + esc(s.slice(i, j)) + '</span>';
+        i = j;
+      } else if (c === '"' || c === String.fromCharCode(39)) {
+        var q = c;
+        var k = i + 1;
+        while (k < s.length) {
+          if (s.charAt(k) === BS) { k += 2; continue; }
+          if (s.charAt(k) === q) { k++; break; }
+          k++;
+        }
+        out += '<span class="tok-str">' + esc(s.slice(i, k)) + '</span>';
+        i = k;
+      } else if (c >= '0' && c <= '9') {
+        var d = i;
+        while (d < s.length && /[0-9.]/.test(s.charAt(d))) d++;
+        out += '<span class="tok-num">' + esc(s.slice(i, d)) + '</span>';
+        i = d;
+      } else if (wordStart(c)) {
+        var e = i + 1;
+        while (e < s.length && wordChar(s.charAt(e))) e++;
+        var w = s.slice(i, e);
+        out += KW[w] ? '<span class="tok-kw">' + esc(w) + '</span>' : esc(w);
+        i = e;
+      } else {
+        out += esc(c);
+        i++;
+      }
+    }
+    return out;
+  }
+  w.highlightCode = highlight;
+})(window);
 `;
 
 const UI_HTML = `<!DOCTYPE html>
@@ -550,6 +747,8 @@ const UI_HTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>通知中心 · Cloudflare Notify</title>
 <script>(function(){try{var t=localStorage.getItem('cfn_theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<!--@I18N_JS@-->
+<!--@HIGHLIGHT_JS@-->
 <style>${UI_CSS}</style>
 </head>
 <body>
@@ -558,26 +757,30 @@ const UI_HTML = `<!DOCTYPE html>
     <div class="brand">
       <div class="logo">✦</div>
       <div>
-        <h1>通知中心</h1>
-        <div class="sub">Cloudflare Notify · 免费、免服务器的消息通知</div>
+        <h1 data-i18n="app.name">通知中心</h1>
+        <div class="sub">Cloudflare Notify · <span data-i18n="app.sub">免费、免服务器的消息通知</span></div>
       </div>
     </div>
     <div class="status">
       <span class="dot" id="dot"></span>
       <span id="statusText">正在连接…</span>
-      <button class="ghost" id="btnTheme" title="切换主题">主题</button>
-      <button class="ghost" id="btnDiag" style="display:none">配置自检</button>
-      <button class="ghost" id="btnLogout" style="display:none">退出</button>
+      <button class="ghost" id="btnTheme" data-i18n-title="header.theme" title="切换主题">主题</button>
+      <button class="ghost" id="btnLang" data-i18n="header.lang" title="切换语言">EN</button>
+      <a class="ghost" href="/docs" title="API 文档" data-i18n-title="nav.docs">API 文档</a>
+      <button class="ghost" id="btnDiag" style="display:none" data-i18n="header.diag">配置自检</button>
+      <button class="ghost" id="btnLogout" style="display:none" data-i18n="header.logout">退出</button>
     </div>
   </header>
 
   <nav class="quick-nav" id="quickNav">
-    <a href="#sec-integration" data-nav="sec-integration">接入</a>
-    <a href="#sec-channels" data-nav="sec-channels">渠道</a>
-    <a href="#sec-rules" data-nav="sec-rules">规则</a>
-    <a href="#sec-key" data-nav="sec-key">密钥</a>
-    <a href="#sec-send" data-nav="sec-send">发送</a>
-    <a href="#sec-list" data-nav="sec-list">通知</a>
+    <a href="#sec-integration" data-nav="sec-integration" data-i18n="nav.integration">接入</a>
+    <a href="#sec-channels" data-nav="sec-channels" data-i18n="nav.channels">渠道</a>
+    <a href="#sec-rules" data-nav="sec-rules" data-i18n="nav.rules">规则</a>
+    <a href="#sec-key" data-nav="sec-key" data-i18n="nav.keys">密钥</a>
+    <a href="#sec-send" data-nav="sec-send" data-i18n="nav.send">发送</a>
+    <a href="#sec-list" data-nav="sec-list" data-i18n="nav.list">通知</a>
+    <a href="#sec-stats" data-nav="sec-stats" data-i18n="nav.stats">统计</a>
+    <a href="/docs" data-nav="docs" data-i18n="nav.docs">API 文档</a>
   </nav>
 
   <div class="panel">
@@ -593,10 +796,10 @@ const UI_HTML = `<!DOCTYPE html>
       <div class="panel-side">
         <section class="section" id="sec-integration">
           <div class="tool-head">
-            <h2>推送接入</h2>
-            <span class="tool-badge">9 种方式</span>
+            <h2 data-i18n="sec.integration">推送接入</h2>
+            <span class="tool-badge" data-i18n="badge.ways">9 种方式</span>
           </div>
-          <p class="tool-note">点标签查看示例，复制后把示例里的密钥换成下方生成的<b>轮换推送密钥</b>即可。</p>
+          <p class="tool-note" data-i18n="note.integration">点标签查看示例，复制后把示例里的密钥换成下方生成的轮换推送密钥即可。</p>
           <div class="intg-tabs" id="intgTabs"></div>
           <div class="intg-card">
             <div class="intg-head">
@@ -605,9 +808,13 @@ const UI_HTML = `<!DOCTYPE html>
             </div>
             <div class="intg-scene" id="intgScene"></div>
             <div class="code-wrap">
-              <pre class="intg-code" id="intgCode"></pre>
-              <button class="code-copy" id="btnCodeCopy" type="button">复制</button>
+              <div class="code-body">
+                <div class="code-ln" id="intgLn"></div>
+                <pre class="intg-code" id="intgCode"></pre>
+              </div>
+              <button class="code-copy" id="btnCodeCopy" type="button" data-i18n="btn.copy">复制</button>
             </div>
+            <span class="code-more" id="btnCodeMore" style="display:none"></span>
             <div class="hint" id="intgNote"></div>
           </div>
           <div class="inline-status" id="intgStatus" role="status"></div>
@@ -624,10 +831,10 @@ const UI_HTML = `<!DOCTYPE html>
 
         <section class="section" id="sec-channels">
           <div class="tool-head">
-            <h2>通知渠道</h2>
+            <h2 data-i18n="sec.channels">通知渠道</h2>
             <span class="tool-badge" id="channelBadge">读取中</span>
           </div>
-          <p class="tool-note">企业微信 / 钉钉 / 飞书可同时启用。Webhook 只保存在你自己的 KV，面板展示时自动脱敏。</p>
+          <p class="tool-note" data-i18n="note.channels">企业微信 / 钉钉 / 飞书可同时启用。Webhook 只保存在你自己的 KV，面板展示时自动脱敏。</p>
           <div id="channelList"></div>
           <div class="inline-status" id="channelStatus" role="status"></div>
           <div class="row">
@@ -638,10 +845,10 @@ const UI_HTML = `<!DOCTYPE html>
 
         <section class="section" id="sec-rules">
           <div class="tool-head">
-            <h2>规则与模板</h2>
-            <span class="tool-badge" id="ruleBadge">可选</span>
+            <h2 data-i18n="sec.rules">规则与模板</h2>
+            <span class="tool-badge" id="ruleBadge" data-i18n="badge.optional">可选</span>
           </div>
-          <p class="tool-note">静默时段内的消息仍会存入通知中心，只是不推送到外部渠道。</p>
+          <p class="tool-note" data-i18n="note.rules">静默时段内的消息仍会存入通知中心，只是不推送到外部渠道。</p>
           <label><input type="checkbox" id="fQuietEnabled" style="width:auto;margin-right:6px" />启用静默时段</label>
           <div class="row" style="margin-top:8px">
             <input type="time" id="fQuietStart" value="23:00" style="flex:1" />
@@ -659,10 +866,10 @@ const UI_HTML = `<!DOCTYPE html>
 
         <section class="section" id="sec-key">
           <div class="tool-head">
-            <h2>密钥与轮换</h2>
+            <h2 data-i18n="sec.keys">密钥与轮换</h2>
             <span class="tool-badge" id="keyBadge">读取中</span>
           </div>
-          <p class="tool-note">软件里只填<b>轮换推送密钥</b>；<b>SEND_TOKEN</b> 是管理主密钥，仅用于下方操作，不要填进软件。</p>
+          <p class="tool-note" data-i18n="note.keys">软件里只填轮换推送密钥；SEND_TOKEN 是管理主密钥，仅用于下方操作，不要填进软件。</p>
           <label for="fMasterToken">管理主密钥 SEND_TOKEN</label>
           <input id="fMasterToken" type="password" placeholder="仅用于生成 / 查看轮换密钥" autocomplete="off" />
           <div class="hint" id="keyStatus">正在读取轮换密钥状态…</div>
@@ -677,10 +884,10 @@ const UI_HTML = `<!DOCTYPE html>
 
         <section class="section" id="sec-send">
           <div class="tool-head">
-            <h2>发送测试通知</h2>
+            <h2 data-i18n="sec.send">发送测试通知</h2>
             <span class="tool-badge" id="wecomBadge">企微 —</span>
           </div>
-          <p class="tool-note">先填标题或内容，点「发送通知」验证链路；密钥可留空以使用浏览器保存值。</p>
+          <p class="tool-note" data-i18n="note.send">先填标题或内容，点「发送通知」验证链路；密钥可留空以使用浏览器保存值。</p>
           <label for="fTitle">标题</label>
           <input id="fTitle" placeholder="例如：构建完成" autocomplete="off" />
           <label for="fContent">内容</label>
@@ -700,21 +907,35 @@ const UI_HTML = `<!DOCTYPE html>
       </div>
 
       <div class="panel-main">
+        <section class="section" id="sec-stats">
+          <div class="tool-head">
+            <h2 data-i18n="sec.stats">统计看板</h2>
+            <span class="tool-badge" id="statsBadge">读取中</span>
+          </div>
+          <div class="stats-grid" id="statsCards"><div class="stat-card"><div class="v">—</div><div class="k">加载中…</div></div></div>
+          <div class="stat-block"><h3 data-i18n="stats.sources">来源分布</h3><div id="statsSources"></div></div>
+          <div class="stat-block"><h3 data-i18n="stats.channels">渠道投递</h3><div id="statsChannels"></div></div>
+          <div class="stat-block"><h3>近 14 天 / UTC+8</h3><div class="stat-bars" id="statsDaily"></div><div class="hint" id="statsNote"></div></div>
+        </section>
+
         <section class="section" id="sec-list">
           <div class="list-head">
-            <h2>最近通知</h2>
+            <h2 data-i18n="sec.list">最近通知</h2>
             <div class="list-actions">
               <span class="count" id="count"></span>
-              <button class="ghost toggle-all" id="btnToggleAll">全部展开</button>
-              <button class="ghost" id="btnRefresh">刷新</button>
-              <button class="ghost danger" id="btnClear">清空</button>
+              <button class="ghost toggle-all" id="btnToggleAll" data-i18n="btn.toggleAll">全部展开</button>
+              <button class="ghost" id="btnRefresh" data-i18n="btn.refresh">刷新</button>
+              <button class="ghost danger" id="btnClear" data-i18n="btn.clear">清空</button>
+              <button class="ghost" id="btnExportJson" data-i18n="btn.exportJson">导出 JSON</button>
+              <button class="ghost" id="btnExportCsv" data-i18n="btn.exportCsv">导出 CSV</button>
+              <button class="ghost" id="btnExportMd" data-i18n="btn.exportMd">导出 MD</button>
             </div>
           </div>
           <div class="list-head" style="margin-bottom:6px">
-            <div class="search-box"><input id="fSearch" type="search" placeholder="搜索标题、内容或来源…" autocomplete="off" /></div>
+            <div class="search-box"><input id="fSearch" type="search" data-i18n-ph="label.search" placeholder="搜索标题、内容或来源…" autocomplete="off" /></div>
           </div>
           <div class="chips" id="sourceChips"></div>
-          <div class="hint" style="margin:0 0 12px">折叠时显示标题与内容摘要，点击标题行展开全文；支持按来源过滤与按时间分组。</div>
+          <div class="hint" style="margin:0 0 12px" data-i18n="note.list">折叠时显示标题与内容摘要，点击标题行展开全文；支持按来源过滤与按时间分组。</div>
           <div id="list">
             <div class="empty"><div class="icon">◇</div><p>加载中…</p></div>
           </div>
@@ -761,6 +982,9 @@ const UI_HTML = `<!DOCTYPE html>
 <script>
 (function () {
   'use strict';
+
+  var T = window.I18N ? window.I18N.t : function (k) { return k; };
+  if (window.I18N) window.I18N.apply();
 
   var REFRESH_MS = 5000;
   var state = {
@@ -934,6 +1158,7 @@ const UI_HTML = `<!DOCTYPE html>
   ];
 
   var stateIntg = 'urlget';
+  var stateCodeExpanded = false;
 
   function currentKey() {
     return state.rotatingKey || $('fSendToken').value.trim() || state.sendToken || '<你的密钥>';
@@ -962,7 +1187,24 @@ const UI_HTML = `<!DOCTYPE html>
     $('intgName').textContent = item.name;
     $('intgScene').textContent = item.scene;
     $('intgNote').textContent = item.note;
-    $('intgCode').textContent = item.code(location.origin, currentKey());
+    // U4：展示时脱敏密钥、纯正则高亮、行号与长代码折叠；完整值只放在 dataset 供复制。
+    var fullCode = item.code(location.origin, currentKey());
+    var key = currentKey();
+    var shownCode = fullCode;
+    if (key && key !== '<你的密钥>' && key.length > 4) {
+      var masked = key.charAt(0) + '********' + key.charAt(key.length - 1);
+      shownCode = fullCode.split(key).join(masked);
+    }
+    var allLines = shownCode.split(String.fromCharCode(10));
+    var collapsed = allLines.length > 14 && !stateCodeExpanded;
+    var viewLines = collapsed ? allLines.slice(0, 14) : allLines;
+    var pre = $('intgCode');
+    pre.innerHTML = window.highlightCode ? window.highlightCode(viewLines.join(String.fromCharCode(10))) : esc(viewLines.join(String.fromCharCode(10)));
+    pre.dataset.full = fullCode;
+    $('intgLn').innerHTML = viewLines.map(function (_, i) { return String(i + 1); }).join(String.fromCharCode(10));
+    var more = $('btnCodeMore');
+    more.style.display = allLines.length > 14 ? 'inline-block' : 'none';
+    more.textContent = collapsed ? '展开全部（' + allLines.length + ' 行）' : '收起代码';
     // 方糖专用地址只在对应标签下显示，避免与其他标签的示例重复占位
     $('scQuick').style.display = stateIntg === 'serverchan' ? '' : 'none';
     if (stateIntg === 'serverchan') renderServerchanUrl();
@@ -1299,6 +1541,112 @@ const UI_HTML = `<!DOCTYPE html>
     });
   }
 
+  // ---------- v2.1：L4 统计看板 / L1 消息导出 ----------
+  function loadStats() {
+    return api('/api/stats').then(function (s) {
+      if (!s || !s.ok) return;
+      var badge = $('statsBadge');
+      badge.textContent = s.total + ' 条';
+      badge.className = 'tool-badge' + (s.total ? ' on' : '');
+      var NL = String.fromCharCode(10);
+      var maxDay = 1;
+      for (var i = 0; i < s.daily.length; i++) maxDay = Math.max(maxDay, s.daily[i].count);
+      $('statsCards').innerHTML =
+        '<div class="stat-card"><div class="v">' + s.total + '</div><div class="k">' + esc(T('stats.total')) + '</div></div>' +
+        '<div class="stat-card"><div class="v">' + (s.daily.length ? s.daily[s.daily.length - 1].count : 0) + '</div><div class="k">' + esc(T('stats.today')) + '</div></div>' +
+        '<div class="stat-card"><div class="v">' + s.sources.length + '</div><div class="k">' + esc(T('stats.sources')) + '</div></div>' +
+        '<div class="stat-card"><div class="v">' + s.channels.filter(function (c) { return c.ok + c.fail > 0; }).length + '</div><div class="k">' + esc(T('stats.channels')) + '</div></div>';
+      var smax = 1;
+      for (var j = 0; j < s.sources.length; j++) smax = Math.max(smax, s.sources[j].count);
+      $('statsSources').innerHTML = s.sources.length
+        ? s.sources.map(function (x) {
+            return '<div class="stat-row"><span class="n">' + esc(x.name) + '</span>' +
+              '<span class="track"><span class="fill" style="width:' + Math.round(x.count * 100 / smax) + '%"></span></span>' +
+              '<span class="c">' + x.count + '</span></div>';
+          }).join('')
+        : '<div class="hint">—</div>';
+      $('statsChannels').innerHTML = s.channels.map(function (c) {
+        return '<div class="stat-row"><span class="n">' + esc(c.name) + '</span>' +
+          '<span class="track"><span class="fill" style="width:' + (c.rate == null ? 0 : c.rate) + '%"></span></span>' +
+          '<span class="c">' + (c.rate == null ? '—' : c.rate + '%') + '</span></div>';
+      }).join('');
+      $('statsDaily').innerHTML = s.daily.map(function (d) {
+        var h = Math.max(2, Math.round(d.count * 66 / maxDay));
+        return '<span class="stat-bar" style="height:' + h + 'px" title="' + esc(d.date) + ': ' + d.count + '"></span>';
+      }).join('');
+      $('statsNote').textContent = T('stats.sample', { n: s.sampled }) + (s.truncated ? '（仅最近 500 条）' : '');
+    }).catch(function () {
+      $('statsBadge').textContent = '—';
+    });
+  }
+
+  function exportMessages(format) {
+    var list = visibleMessages();
+    var NL = String.fromCharCode(10);
+    var stamp = new Date().toISOString().slice(0, 10);
+    var text;
+    var mime;
+    var ext;
+    var cell = function (v) {
+      var s = String(v == null ? '' : v);
+      var first = s.charAt(0);
+      if (first === '=' || first === '+' || first === '-' || first === '@' ||
+          first === String.fromCharCode(9) || first === String.fromCharCode(13)) s = "'" + s;
+      return '"' + s.split('"').join('""') + '"';
+    };
+    if (format === 'csv') {
+      var lines = ['id,title,content,type,source,timestamp,time,deliveries'];
+      for (var i = 0; i < list.length; i++) {
+        var m = list[i];
+        var ds = (state.deliveries && state.deliveries[m.id]) || [];
+        lines.push([m.id, m.title, m.content, m.type, m.source, m.timestamp,
+          new Date(Number(m.timestamp)).toISOString(),
+          ds.map(function (d) { return d.channel + ':' + (d.ok ? 'ok' : 'fail'); }).join('|')].map(cell).join(','));
+      }
+      text = String.fromCharCode(65279) + lines.join(String.fromCharCode(13) + NL);
+      mime = 'text/csv;charset=utf-8';
+      ext = 'csv';
+    } else if (format === 'md') {
+      var out = ['# 通知导出', '', '数量：' + list.length, ''];
+      for (var k = 0; k < list.length; k++) {
+        var x = list[k];
+        out.push('## ' + (x.title || '（无标题）'), '',
+          '- 时间：' + new Date(Number(x.timestamp)).toISOString(),
+          '- 来源：' + (x.source || 'api'), '- ID：' + String(x.id), '', String(x.content || ''), '');
+      }
+      text = out.join(NL);
+      mime = 'text/markdown;charset=utf-8';
+      ext = 'md';
+    } else {
+      text = JSON.stringify({
+        version: (state.status && state.status.version) || '', exportedAt: new Date().toISOString(),
+        count: list.length,
+        messages: list.map(function (m) {
+          return { id: m.id, title: m.title, content: m.content, type: m.type, source: m.source,
+            timestamp: m.timestamp, time: new Date(Number(m.timestamp)).toISOString(),
+            deliveries: (state.deliveries && state.deliveries[m.id]) || [] };
+        }),
+      }, null, 2);
+      mime = 'application/json;charset=utf-8';
+      ext = 'json';
+    }
+    var blob = new Blob([text], { type: mime });
+    var href = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = href;
+    a.download = 'notify-' + stamp + '.' + ext;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(href); }, 1000);
+    toast(T('toast.exported'));
+  }
+
+  ['json', 'csv', 'md'].forEach(function (fmt) {
+    var btn = $('btnExport' + fmt.charAt(0).toUpperCase() + fmt.slice(1));
+    if (btn) btn.addEventListener('click', function () { exportMessages(fmt); });
+  });
+
   function init() {
     fetch('/api/status', { credentials: 'same-origin' }).then(function (r) {
       if (r.status === 401) { requireReauth(); throw new Error('unauthorized'); }
@@ -1325,6 +1673,7 @@ const UI_HTML = `<!DOCTYPE html>
       loadChannels();
       loadRules();
       renderIntegrations();
+      loadStats();
       start();
     }).catch(function (err) {
       if (err.message === 'unauthorized') return;
@@ -1381,6 +1730,19 @@ const UI_HTML = `<!DOCTYPE html>
     var next = cur === 'dark' ? 'light' : 'dark';
     applyTheme(next);
     toast(next === 'dark' ? '已切换到深色主题' : '已切换到浅色主题');
+  });
+
+  // L3：语言切换（偏好存 localStorage，下次打开保持）
+  $('btnLang').addEventListener('click', function () {
+    var next = (window.I18N && window.I18N.lang() === 'en') ? 'zh' : 'en';
+    if (window.I18N) {
+      window.I18N.setLang(next);
+      window.I18N.apply();
+    }
+    this.textContent = next === 'en' ? '中文' : 'EN';
+    render();
+    renderIntegrations();
+    toast(next === 'en' ? 'Switched to English' : '已切换为中文');
   });
 
   $('quickNav').addEventListener('click', function (e) {
@@ -1467,8 +1829,13 @@ const UI_HTML = `<!DOCTYPE html>
   if ($('btnMobileTop')) $('btnMobileTop').addEventListener('click', function () {
     window.scrollTo(0, 0);
   });
+  $('btnCodeMore').addEventListener('click', function () {
+    stateCodeExpanded = !stateCodeExpanded;
+    renderIntegrations();
+  });
   $('btnCodeCopy').addEventListener('click', function () {
-    var text = $('intgCode').textContent;
+    var el = $('intgCode');
+    var text = el.dataset.full || el.textContent;
     if (!text) { setInline('intgStatus', 'err', '示例为空，请刷新页面后重试。'); return; }
     if (!navigator.clipboard) { setInline('intgStatus', 'err', '当前环境不支持自动复制。'); return; }
     navigator.clipboard.writeText(text).then(function () {
@@ -1660,7 +2027,7 @@ const UI_HTML = `<!DOCTYPE html>
       if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
       location.reload();
     }).catch(function (err) {
-      $('loginErr').textContent = '验证失败：' + err.message;
+      $('loginErr').textContent = T('login.err') + '：' + err.message;
       $('loginErr').classList.add('show');
       // token 单次使用：失败后必须重置组件拿新 token
       if (window.TS && window.TS.enabled()) window.TS.reset();
@@ -1909,6 +2276,8 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>访问验证 · Cloudflare Notify</title>
+<!--@I18N_JS@-->
+<!--@HIGHLIGHT_JS@-->
 <style>${UI_CSS}</style>
 </head>
 <body>
@@ -1917,19 +2286,22 @@ const LOGIN_HTML = `<!DOCTYPE html>
     <div class="brand">
       <div class="logo">✦</div>
       <div>
-        <h1>通知中心</h1>
-        <div class="sub">Cloudflare Notify</div>
+        <h1 data-i18n="app.name">通知中心</h1>
+        <div class="sub">Cloudflare Notify · v2.1</div>
       </div>
     </div>
-    <p class="lead">该通知服务已开启查看验证。请输入查看密钥（READ_TOKEN）以查看通知与接入地址。</p>
-    <label for="loginToken">查看密钥</label>
-    <input id="loginToken" type="password" placeholder="READ_TOKEN" autocomplete="current-password" />
+    <p class="auth-lead" data-i18n="login.lead">该通知服务已开启查看验证。请输入查看密钥（READ_TOKEN）以查看通知与接入地址。</p>
+    <!--@PUBLIC_HINT@-->
+    <label for="loginToken" data-i18n="login.token">查看密钥</label>
+    <input id="loginToken" type="password" data-i18n-ph="login.token" placeholder="READ_TOKEN" autocomplete="current-password" />
+    <div class="auth-err" id="loginErr"></div>
     <!--@TS_WIDGET@-->
     <div class="row">
-      <button class="primary" id="btnLogin">进入通知中心</button>
+      <button class="primary" id="btnLogin" data-i18n="login.enter">进入通知中心</button>
     </div>
-    <div class="auth-err" id="loginErr"></div>
     <div class="hint" style="margin-top:14px">验证通过后会签发 HttpOnly 会话 Cookie，密钥不会保存在浏览器本地。</div>
+    <a class="auth-back" href="/">← 回到首页 / Back to home</a>
+    <a class="auth-back" href="/docs" style="margin-left:14px">API 文档</a>
   </div>
 </div>
 
@@ -1940,6 +2312,8 @@ const LOGIN_HTML = `<!DOCTYPE html>
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
+  var T = window.I18N ? window.I18N.t : function (k) { return k; };
+  if (window.I18N) window.I18N.apply();
 
   function toast(msg) {
     var el = $('toast');
@@ -1952,7 +2326,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
     var btn = this;
     var token = $('loginToken').value.trim();
     if (!token) {
-      $('loginErr').textContent = '请输入查看密钥';
+      $('loginErr').textContent = T('login.err') + ': ' + T('login.token');
       $('loginErr').classList.add('show');
       return;
     }
@@ -1961,7 +2335,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
     if (window.TS && window.TS.enabled()) {
       tsToken = window.TS.token();
       if (!tsToken) {
-        $('loginErr').textContent = '请先完成人机验证';
+        $('loginErr').textContent = T('login.err') + ': Turnstile';
         $('loginErr').classList.add('show');
         return;
       }
@@ -1978,7 +2352,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
       if (!res.d.ok) throw new Error(res.d.error || ('HTTP ' + res.s));
       location.replace('/');
     }).catch(function (err) {
-      $('loginErr').textContent = '验证失败：' + err.message;
+      $('loginErr').textContent = T('login.err') + '：' + err.message;
       $('loginErr').classList.add('show');
       btn.disabled = false;
       // token 单次使用：失败后必须重置组件拿新 token
@@ -2333,7 +2707,13 @@ function tsScriptBlock(env) {
 function applyTurnstile(tpl, env) {
   const widget = turnstileEnabled(env) ? tsWidgetBlock() : '';
   const scripts = turnstileEnabled(env) ? tsScriptBlock(env) : '';
+  const publicHint = String((env && env.READ_TOKEN) || '').trim()
+    ? ''
+    : '<div class="hint box" style="margin-bottom:12px">当前为公开模式，未设置查看密钥（READ_TOKEN）。建议设置后限制通知内容可见范围。</div>';
   return tpl
+    .split('<!--@I18N_JS@-->').join('<script>' + I18N_JS + '</script>')
+    .split('<!--@HIGHLIGHT_JS@-->').join('<script>' + HIGHLIGHT_JS + '</script>')
+    .split('<!--@PUBLIC_HINT@-->').join(publicHint)
     .split('<!--@TS_WIDGET@-->').join(widget)
     .split('<!--@TS_SCRIPTS@-->').join(scripts);
 }
@@ -2660,6 +3040,8 @@ const CHANNELS_KEY = 'meta:channels';
 const TEMPLATES_KEY = 'meta:templates';
 const SETTINGS_KEY = 'meta:settings';
 const AUDIT_KEY = 'meta:audit';
+const TENANTS_KEY = 'meta:tenants';
+const TENANT_QUOTA_PREFIX = 'meta:tenantquota:';
 const IDEM_PREFIX = 'meta:idem:';
 const IDEM_TTL_SECONDS = 24 * 60 * 60;
 const CHANNEL_IDS = Object.freeze(['wecom', 'dingtalk', 'feishu']);
@@ -3110,6 +3492,129 @@ async function countMessages(env) {
     cursor = result.list_complete ? undefined : result.cursor;
   } while (cursor);
   return total;
+}
+
+// ============================== L6 多租户准备 ==============================
+// 租户注册表存在账号级 KV（不经 scopeEnv 包装）；租户自己的消息/配置/审计
+// 全部通过 scopeEnv 加 `t:<id>:` 前缀，做到数据、密钥、配额三层隔离。
+const TENANT_ID_RE = /^[a-z0-9][a-z0-9_-]{1,31}$/;
+
+function normalizeTenant(input, existing) {
+  const src = Object.assign({}, existing || {}, input || {});
+  const id = String(src.id || '').trim().toLowerCase();
+  if (!TENANT_ID_RE.test(id)) throw new Error('租户 ID 需为 2-32 位小写字母、数字、下划线或短横线');
+  const out = {
+    id,
+    name: String(src.name || id).slice(0, 60),
+    sendKey: src.sendKey == null ? '' : String(src.sendKey).slice(0, 200),
+    readToken: src.readToken == null ? '' : String(src.readToken).slice(0, 200),
+    enabled: src.enabled !== false,
+    dailyQuota: Math.max(1, Math.min(100000, Number(src.dailyQuota || 200) || 200)),
+    plan: String(src.plan || 'free').slice(0, 40),
+    status: String(src.status || 'active').slice(0, 40),
+    createdAt: existing && existing.createdAt ? existing.createdAt : Date.now(),
+  };
+  return out;
+}
+
+function publicTenant(t, used) {
+  return {
+    id: t.id, name: t.name, enabled: t.enabled, dailyQuota: t.dailyQuota,
+    plan: t.plan, status: t.status, createdAt: t.createdAt,
+    sendKeySet: Boolean(t.sendKey), readTokenSet: Boolean(t.readToken),
+    usedToday: used || 0,
+  };
+}
+
+async function readTenants(env) {
+  try {
+    const raw = await env.NOTIFICATIONS.get(TENANTS_KEY);
+    const v = raw ? JSON.parse(raw) : null;
+    return v && Array.isArray(v.items) ? v.items : [];
+  } catch (_) { return []; }
+}
+
+async function writeTenants(env, items) {
+  await env.NOTIFICATIONS.put(TENANTS_KEY, JSON.stringify({ items }));
+  await bumpVersion(env);
+}
+
+function tenantPrefix(id) {
+  return id && id !== 'default' ? 't:' + id + ':' : '';
+}
+
+/** 生成租户作用域 env：KV 键加前缀，SEND_TOKEN / READ_TOKEN 替换为租户自己的密钥。 */
+function scopeEnv(env, tenantId, tenant) {
+  const prefix = tenantPrefix(tenantId);
+  const base = env.NOTIFICATIONS;
+  const scoped = Object.assign({}, env);
+  scoped.__raw = env;
+  scoped.TENANT_ID = tenantId || '';
+  if (!prefix) return scoped;
+  scoped.NOTIFICATIONS = {
+    async get(k, o) { return base.get(prefix + k, o); },
+    async put(k, v, o) { return base.put(prefix + k, v, o); },
+    async delete(k) { return base.delete(prefix + k); },
+    async list(o) {
+      const opt = Object.assign({}, o || {});
+      opt.prefix = prefix + (opt.prefix || '');
+      const r = await base.list(opt);
+      return Object.assign({}, r, {
+        keys: (r.keys || []).map((k) => Object.assign({}, k, {
+          name: k.name.indexOf(prefix) === 0 ? k.name.slice(prefix.length) : k.name,
+        })),
+      });
+    },
+  };
+  if (tenant) {
+    if (tenant.sendKey) scoped.SEND_TOKEN = tenant.sendKey;
+    if (tenant.readToken) scoped.READ_TOKEN = tenant.readToken;
+  }
+  return scoped;
+}
+
+function quotaKey(tenantId, ts) {
+  const day = new Date(Number(ts) + 8 * 3600 * 1000).toISOString().slice(0, 10).replace(/-/g, '');
+  return TENANT_QUOTA_PREFIX + tenantId + ':' + day;
+}
+
+async function tenantQuotaUsage(env, tenantId) {
+  if (!tenantId || tenantId === 'default') return 0;
+  const raw = await (env.__raw || env).NOTIFICATIONS.get(quotaKey(tenantId, Date.now()));
+  return Math.max(0, Number(raw || 0) || 0);
+}
+
+/** 发送前调用：租户校验 + 日配额计数（TTL 48h，跨天后自然归零）。 */
+async function checkTenantQuota(env) {
+  const id = env.TENANT_ID || '';
+  if (!id || id === 'default') return null;
+  const base = env.__raw || env;
+  const tenants = await readTenants(base);
+  const t = tenants.find((x) => x.id === id);
+  if (!t || !t.enabled || t.status !== 'active') {
+    return json({ ok: false, error: '租户未启用或已停用' }, 403);
+  }
+  const used = await tenantQuotaUsage(env, id);
+  if (used >= t.dailyQuota) {
+    return json({ ok: false, error: '租户当日发送配额已用完', quota: t.dailyQuota, used }, 429);
+  }
+  await base.NOTIFICATIONS.put(quotaKey(id, Date.now()), String(used + 1), { expirationTtl: 172800 });
+  return null;
+}
+
+async function resolveTenantContext(env, request, url) {
+  const raw = String(request.headers.get('X-Tenant-ID') || url.searchParams.get('tenant') || '').trim().toLowerCase();
+  if (!raw || raw === 'default') return { env, tenantId: '', tenant: null, error: null };
+  if (!TENANT_ID_RE.test(raw)) {
+    return { env, tenantId: raw, tenant: null, error: json({ ok: false, error: 'invalid tenant id' }, 400) };
+  }
+  const list = await readTenants(env);
+  const found = list.find((x) => x.id === raw);
+  if (!found) return { env, tenantId: raw, tenant: null, error: json({ ok: false, error: '未知租户' }, 404) };
+  if (!found.enabled || found.status !== 'active') {
+    return { env, tenantId: raw, tenant: null, error: json({ ok: false, error: '租户已停用' }, 403) };
+  }
+  return { env: scopeEnv(env, raw, found), tenantId: raw, tenant: found, error: null };
 }
 
 // ============================== 企业微信推送 ==============================
@@ -3776,6 +4281,9 @@ async function createMessage(env, data, meta) {
     const hit = await readIdempotency(env, idemKey);
     if (hit && hit.body) return json(Object.assign({}, hit.body, { idempotent: true }), hit.status || 200);
   }
+  // L6：租户日配额在幂等命中之后计数，重放不会重复扣减。
+  const quotaLimited = await checkTenantQuota(env);
+  if (quotaLimited) return quotaLimited;
 
   const now = new Date();
   let src = input;
@@ -3947,19 +4455,152 @@ export class RouterHookSensorDO extends DOBase {
   }
 }
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
+
+// ============================== L5 开放 API 描述 ==============================
+function apiOp(summary, parameters, extra) {
+  return Object.assign({
+    summary,
+    responses: { 200: { description: '成功' }, 400: { description: '参数错误' }, 401: { description: '密钥无效' } },
+  }, parameters ? { parameters } : {}, extra || {});
+}
+const Q_TOKEN = { name: 'token', in: 'query', required: false, description: '发送密钥，可替代 X-Token' };
+const Q_TITLE = { name: 'title', in: 'query', required: false, description: '标题（text 为等价别名）' };
+const Q_CONTENT = { name: 'content', in: 'query', required: false, description: '正文（desp / body 为等价别名）' };
+const Q_FORMAT = { name: 'format', in: 'query', required: false, description: 'json / csv / md，默认 json' };
+const Q_LIMIT = { name: 'limit', in: 'query', required: false, description: '条数，1~1000，默认 500' };
+const H_TENANT = { name: 'X-Tenant-ID', in: 'header', required: false, description: '租户 ID；不传即默认租户' };
+const H_IDEM = { name: 'X-Idempotency-Key', in: 'header', required: false, description: '24 小时幂等键' };
+
+const OPENAPI_SPEC = {
+  openapi: '3.0.3',
+  info: {
+    title: 'Cloudflare Notify API',
+    version: VERSION,
+    description: '自研单文件通知中心。除 /docs 与 /openapi.json 外，所有端点需密钥鉴权；管理类端点仅认管理主密钥 SEND_TOKEN。',
+  },
+  servers: [{ url: '/' }],
+  components: {
+    securitySchemes: {
+      XToken: { type: 'apiKey', in: 'header', name: 'X-Token' },
+      Bearer: { type: 'http', scheme: 'bearer' },
+      QueryToken: { type: 'apiKey', in: 'query', name: 'token' },
+    },
+  },
+  security: [{ XToken: [] }, { Bearer: [] }, { QueryToken: [] }],
+  paths: {
+    '/api/send': {
+      post: apiOp('发送通知（JSON / 表单）', [H_TENANT, H_IDEM], {
+        description: 'Body 支持 title/text、content/desp/body、type、source、template 及 v.<name> 自定义变量。',
+      }),
+      get: apiOp('发送通知（URL 直发）', [Q_TOKEN, Q_TITLE, Q_CONTENT, H_TENANT]),
+    },
+    '/send': {
+      get: apiOp('Server酱 / 方糖兼容发送（GET）', [Q_TOKEN, { name: 'text', in: 'query', required: false, description: '标题' }, { name: 'desp', in: 'query', required: false, description: '正文' }]),
+      post: apiOp('Server酱 / 方糖兼容发送（POST 表单）'),
+    },
+    '/{key}.send': {
+      get: apiOp('方糖兼容：密钥写在路径中', [Q_TITLE, Q_CONTENT]),
+      post: apiOp('方糖兼容：密钥写在路径中（表单）'),
+    },
+    '/api/messages': {
+      get: apiOp('读取通知列表（支持 version 增量判定）', [H_TENANT, { name: 'limit', in: 'query', required: false, description: '默认 50' }, { name: 'version', in: 'query', required: false, description: '版本号，未变化返回 unchanged' }]),
+    },
+    '/api/messages/{id}': {
+      delete: apiOp('删除单条通知', [H_TENANT], { description: '需要管理权限：管理主密钥或已启用的查看验证。' }),
+    },
+    '/api/export': {
+      get: apiOp('导出通知（JSON / CSV / Markdown）', [Q_FORMAT, Q_LIMIT, H_TENANT]),
+    },
+    '/api/stats': {
+      get: apiOp('统计看板：近 14 天趋势、来源分布、渠道成功率', [H_TENANT]),
+    },
+    '/api/channels': {
+      get: apiOp('读取渠道配置（Webhook 脱敏）', [H_TENANT]),
+      put: apiOp('保存渠道配置（管理主密钥）', [H_TENANT]),
+    },
+    '/api/channels/test': {
+      post: apiOp('测试指定渠道连通性（管理主密钥）', [H_TENANT]),
+    },
+    '/api/templates': {
+      get: apiOp('读取通知模板', [H_TENANT]),
+      put: apiOp('保存通知模板（管理主密钥）', [H_TENANT]),
+    },
+    '/api/settings': {
+      get: apiOp('读取静默时段等设置', [H_TENANT]),
+      put: apiOp('保存设置（管理主密钥）', [H_TENANT]),
+    },
+    '/api/key/rotate': {
+      post: apiOp('轮换推送密钥（管理主密钥）', []),
+    },
+    '/api/routerhook/{event}': {
+      post: apiOp('RouterHook 事件接收（响应体含 success）', [H_TENANT, { name: 'device', in: 'query', required: false, description: '设备标识，用于多路由器区分与传感器聚合' }]),
+    },
+    '/api/tenants': {
+      get: apiOp('列出租户（管理主密钥，密钥脱敏）', []),
+      post: apiOp('创建租户（管理主密钥）', []),
+    },
+    '/api/tenants/{id}': {
+      put: apiOp('更新租户（管理主密钥）', []),
+      delete: apiOp('注销租户（管理主密钥，历史数据保留）', []),
+    },
+    '/api/tenant': {
+      get: apiOp('查询当前租户信息与当日配额', [H_TENANT]),
+    },
+    '/api/login': {
+      post: apiOp('用 READ_TOKEN 换取 HttpOnly 会话 Cookie', []),
+    },
+  },
+};
+
+function renderDocsHtml() {
+  const rows = [];
+  for (const [p, item] of Object.entries(OPENAPI_SPEC.paths)) {
+    for (const [verb, op] of Object.entries(item)) {
+      if (['get', 'post', 'put', 'delete'].indexOf(verb) < 0) continue;
+      const params = (op.parameters || []).map((x) => x.name).join(', ');
+      rows.push('<tr><td><span class="doc-verb ' + verb + '">' + verb.toUpperCase() + '</span></td>' +
+        '<td><code>' + escapeHtmlText(p) + '</code></td>' +
+        '<td>' + escapeHtmlText(op.summary || '') + '</td>' +
+        '<td>' + escapeHtmlText(params || '—') + '</td></tr>');
+    }
+  }
+  return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8" />' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
+    '<title>API 文档 · Cloudflare Notify</title><style>' + UI_CSS + '</style></head><body>' +
+    '<div class="wrap"><header class="top"><div class="brand"><div class="logo">✦</div><div>' +
+    '<h1>API 文档</h1><div class="sub">Cloudflare Notify · v' + escapeHtmlText(VERSION) + '</div></div></div>' +
+    '<div class="status"><a class="ghost" href="/">返回通知中心</a>' +
+    '<a class="ghost" href="/openapi.json">OpenAPI JSON</a></div></header>' +
+    '<div class="panel"><section class="section">' +
+    '<h2>鉴权方式</h2><p class="tool-note">发送与读取端点接受 <code>X-Token</code> Header、<code>Authorization: Bearer</code> 或 <code>?token=</code>。' +
+    '管理类端点（配置、轮换、租户）只认 <code>SEND_TOKEN</code>。所有写操作同时支持可选 HMAC 入站签名与 256KB 请求体上限。</p>' +
+    '<h2>端点一览</h2><div class="doc-table"><table><thead><tr><th>方法</th><th>路径</th><th>说明</th><th>主要参数</th></tr></thead>' +
+    '<tbody>' + rows.join('') + '</tbody></table></div></section></div></div></body></html>';
+}
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, rawEnv) {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+    // env 是「本次请求作用域」：默认等同 rawEnv；带 X-Tenant-ID / ?tenant= 时
+    // 换成租户作用域（KV 前缀 + 租户自己的密钥），下游业务逻辑无需感知。
+    let env = rawEnv;
+    let tenantId = '';
+    let tenant = null;
 
     if (method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
     }
 
     try {
+      const resolved = await resolveTenantContext(rawEnv, request, url);
+      if (resolved.error) return resolved.error;
+      env = resolved.env;
+      tenantId = resolved.tenantId;
+      tenant = resolved.tenant;
+
       // ---- 登录 / 退出（会话 Cookie）----
       if (path === '/api/login' && method === 'POST') {
         const ip = clientIp(request);
@@ -4353,6 +4994,191 @@ export default {
         await bumpVersion(env);
         await appendAudit(env, 'settings.update', 'quiet=' + (next.quietEnabled ? next.quietStart + '-' + next.quietEnd : 'off'));
         return json({ ok: true, settings: next });
+      }
+
+      // ================= L1 导出 / L4 统计 / L5 文档 / L6 租户 =================
+
+      // 消息导出：JSON / CSV / Markdown，按查看权限，带 BOM 的 CSV 可直接用 Excel 打开
+      if (path === '/api/export' && method === 'GET') {
+        if (!(await hasReadPermission(request, url, env))) return json({ ok: false, error: 'unauthorized' }, 401);
+        const format = String(url.searchParams.get('format') || 'json').toLowerCase();
+        if (['json', 'csv', 'md'].indexOf(format) < 0) {
+          return json({ ok: false, error: 'format 仅支持 json / csv / md' }, 400);
+        }
+        const limit = Math.max(1, Math.min(1000, Number(url.searchParams.get('limit') || 500) || 500));
+        const items = (await listMessages(env, limit)).map(decorateMessage);
+        const log = await readDeliveryLog(env);
+        const deliveries = {};
+        for (const x of (log.items || [])) {
+          if (!x || !x.eventId) continue;
+          (deliveries[x.eventId] = deliveries[x.eventId] || []).push({
+            channel: x.channel || 'wecom', ok: Boolean(x.ok), error: String(x.error || '').slice(0, 120),
+          });
+        }
+        let text;
+        let type;
+        if (format === 'json') {
+          text = JSON.stringify({
+            version: VERSION, exportedAt: new Date().toISOString(), count: items.length,
+            messages: items.map((m) => ({
+              id: m.id, title: m.title, content: m.content, type: m.type, source: m.source,
+              timestamp: m.timestamp, time: new Date(Number(m.timestamp)).toISOString(),
+              deliveries: deliveries[m.id] || [],
+            })),
+          }, null, 2);
+          type = 'application/json; charset=utf-8';
+        } else if (format === 'csv') {
+          // CSV 公式注入防护：Excel 会把 = + - @ 开头的单元格当公式执行。
+          const cell = (v) => {
+            let s = String(v == null ? '' : v);
+            if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+            return '"' + s.replace(/"/g, '""') + '"';
+          };
+          const lines = ['id,title,content,type,source,timestamp,time,deliveries'];
+          for (const m of items) {
+            lines.push([m.id, m.title, m.content, m.type, m.source, m.timestamp,
+              new Date(Number(m.timestamp)).toISOString(),
+              (deliveries[m.id] || []).map((d) => d.channel + ':' + (d.ok ? 'ok' : 'fail')).join('|'),
+            ].map(cell).join(','));
+          }
+          text = '\ufeff' + lines.join('\r\n');
+          type = 'text/csv; charset=utf-8';
+        } else {
+          const lines = ['# 通知导出', '', '导出时间：' + new Date().toISOString(), '数量：' + items.length, ''];
+          for (const m of items) {
+            lines.push('## ' + (m.title || '（无标题）'), '',
+              '- 时间：' + new Date(Number(m.timestamp)).toISOString(),
+              '- 来源：' + (m.source || 'api'), '- ID：' + String(m.id), '',
+              String(m.content || ''), '');
+          }
+          text = lines.join('\n');
+          type = 'text/markdown; charset=utf-8';
+        }
+        const stamp = new Date().toISOString().slice(0, 10);
+        return new Response(text, {
+          status: 200,
+          headers: {
+            'Content-Type': type,
+            'Content-Disposition': 'attachment; filename="notify-' + stamp + '.' + (format === 'md' ? 'md' : format) + '"',
+            'Cache-Control': 'no-store',
+            ...SECURITY_HEADERS,
+          },
+        });
+      }
+
+      // 统计看板数据：一次 list + 最多 500 次 get，仅在打开看板时请求，不参与轮询
+      if (path === '/api/stats' && method === 'GET') {
+        if (!(await hasReadPermission(request, url, env))) return json({ ok: false, error: 'unauthorized' }, 401);
+        const messages = await listMessages(env, 500);
+        const dayKey = (ts) => new Date(Number(ts) + 8 * 3600 * 1000).toISOString().slice(0, 10);
+        const days = [];
+        for (let i = 13; i >= 0; i--) {
+          days.push({ date: new Date(Date.now() - i * 86400000 + 8 * 3600 * 1000).toISOString().slice(0, 10), count: 0 });
+        }
+        const byDay = Object.fromEntries(days.map((d) => [d.date, d]));
+        const sources = {};
+        const hours = new Array(24).fill(0);
+        for (const m of messages) {
+          const k = dayKey(m.timestamp || 0);
+          if (byDay[k]) byDay[k].count++;
+          const s = String(m.source || 'api');
+          sources[s] = (sources[s] || 0) + 1;
+          hours[new Date(Number(m.timestamp || 0) + 8 * 3600 * 1000).getUTCHours()]++;
+        }
+        const channels = {};
+        for (const c of (await readChannelConfigs(env)).map((x) => ({ id: x.id, name: x.name }))) {
+          channels[c.id] = { id: c.id, name: c.name, ok: 0, fail: 0 };
+        }
+        const log = await readDeliveryLog(env);
+        for (const x of (log.items || [])) {
+          const id = String((x && x.channel) || 'wecom');
+          if (!channels[id]) channels[id] = { id, name: id, ok: 0, fail: 0 };
+          if (x.ok) channels[id].ok++; else channels[id].fail++;
+        }
+        const channelStats = Object.values(channels).map((c) => Object.assign({}, c, {
+          rate: c.ok + c.fail ? Math.round(c.ok * 100 / (c.ok + c.fail)) : null,
+        }));
+        return json({
+          ok: true,
+          total: await countMessages(env),
+          sampled: messages.length,
+          truncated: messages.length >= 500,
+          daily: days,
+          hourly: hours,
+          sources: Object.entries(sources).map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count).slice(0, 10),
+          channels: channelStats,
+        });
+      }
+
+      // 开放 API：机器可读的 OpenAPI 3.0 描述 + 服务端内嵌文档页
+      if (path === '/openapi.json' && method === 'GET') {
+        return json(OPENAPI_SPEC);
+      }
+      if (path === '/docs' && method === 'GET') {
+        return html(renderDocsHtml(), 200, {}, env);
+      }
+
+      // L6：租户自查（租户自己的密钥即可，不需要管理主密钥）
+      if (path === '/api/tenant' && method === 'GET') {
+        if (!tenantId) return json({ ok: false, error: '未指定租户（X-Tenant-ID 或 ?tenant=）' }, 400);
+        return json({ ok: true, tenant: publicTenant(tenant, await tenantQuotaUsage(env, tenantId)) });
+      }
+
+      // L6：租户注册表（仅管理主密钥 SEND_TOKEN 可读写，密钥在响应中一律脱敏）
+      if (path === '/api/tenants' && method === 'GET') {
+        if (!hasAdminPermission(request, url, rawEnv)) return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        const list = await readTenants(rawEnv);
+        const out = [];
+        for (const t of list) out.push(publicTenant(t, await tenantQuotaUsage(rawEnv, t.id)));
+        return json({ ok: true, tenants: out });
+      }
+      if (path === '/api/tenants' && method === 'POST') {
+        if (!hasAdminPermission(request, url, rawEnv)) return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        const sig = await verifyInboundSignature(request, rawEnv);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
+        const body = await parseBody(request);
+        let next;
+        try {
+          const list = await readTenants(rawEnv);
+          const id = String(body.id || '').trim().toLowerCase();
+          if (list.some((x) => x.id === id)) return json({ ok: false, error: '租户已存在' }, 409);
+          const created = normalizeTenant(body);
+          list.push(created);
+          next = list;
+        } catch (e) {
+          return json({ ok: false, error: e && e.message ? e.message : '租户配置无效' }, 400);
+        }
+        await writeTenants(rawEnv, next);
+        await appendAudit(rawEnv, 'tenant.create', String(body.id || '').toLowerCase());
+        return json({ ok: true, tenant: publicTenant(next[next.length - 1], 0) });
+      }
+      const tenantMatch = path.match(/^\/api\/tenants\/([a-z0-9][a-z0-9_-]{1,31})$/);
+      if (tenantMatch && (method === 'PUT' || method === 'DELETE')) {
+        if (!hasAdminPermission(request, url, rawEnv)) return json({ ok: false, error: 'unauthorized: 需要管理主密钥 SEND_TOKEN' }, 401);
+        const sig = await verifyInboundSignature(request, rawEnv);
+        if (!sig.ok) return json({ ok: false, error: sig.error }, 403);
+        const id = tenantMatch[1];
+        const list = await readTenants(rawEnv);
+        const idx = list.findIndex((x) => x.id === id);
+        if (idx < 0) return json({ ok: false, error: '未知租户' }, 404);
+        if (method === 'DELETE') {
+          list.splice(idx, 1);
+          await writeTenants(rawEnv, list);
+          await appendAudit(rawEnv, 'tenant.delete', id);
+          return json({ ok: true, deleted: id, note: '仅注销租户，历史数据保留，重新创建后可继续读取' });
+        }
+        const body = await parseBody(request);
+        let updated;
+        try {
+          updated = normalizeTenant(Object.assign({}, body, { id }), list[idx]);
+          list[idx] = updated;
+        } catch (e) {
+          return json({ ok: false, error: e && e.message ? e.message : '租户配置无效' }, 400);
+        }
+        await writeTenants(rawEnv, list);
+        await appendAudit(rawEnv, 'tenant.update', id + ':' + (updated.enabled ? 'on' : 'off'));
+        return json({ ok: true, tenant: publicTenant(updated, await tenantQuotaUsage(rawEnv, id)) });
       }
 
       // 统计

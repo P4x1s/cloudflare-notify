@@ -128,7 +128,7 @@ ok('标签点击使用 closest 事件委托', src.includes("closest('.intg-tab')
 
 section('6. 安全：转义与脱敏');
 ok('标签文字经 esc() 转义', /esc\(INTEGRATIONS\[i\]\.label\)/.test(src));
-ok('示例用 textContent 而非 innerHTML 写入', src.includes("$('intgCode').textContent = item.code"));
+ok('示例代码写入前经高亮器转义', /pre\.dataset\.full = fullCode/.test(src) && /highlightCode\(viewLines\.join/.test(src));
 ok('登录页不含接入面板 DOM', (() => {
   const s = src.indexOf('const LOGIN_HTML = `');
   const login = src.slice(s);

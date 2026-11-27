@@ -244,7 +244,7 @@ section('8. 发送限流与逻辑一致性');
   ok('429 带 Retry-After', Number(last.res.headers.get('Retry-After')) > 0);
 
   const status = await call('/api/status?token=' + READ, {}, env);
-  ok('版本号为 2.0.0', status.body.version === '2.0.0', status.body.version);
+  ok('版本号为 2.0.0', status.body.version === '2.1.0', status.body.version);
   ok('状态声明新特性', (status.body.features || []).includes('channels') && (status.body.features || []).includes('rate-limit'));
   ok('状态含渠道配置', Array.isArray(status.body.channels) && status.body.channels.length === 3);
   ok('状态含静默设置', Boolean(status.body.settings) && status.body.settings.quietEnabled === false);

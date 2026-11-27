@@ -12,7 +12,24 @@
 
 ![通知中心界面](docs/screenshot-notifications.png)
 
-· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md) · Webhook 接入与演进建议：[WEBHOOK.md](docs/WEBHOOK.md) · 产品改进路线图：[ROADMAP.md](docs/ROADMAP.md) · **v2.0 升级说明：[V20_RELEASE.md](docs/V20_RELEASE.md)**
+· 部署教程：[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md) · 排错手册：[TROUBLESHOOTING.md](TROUBLESHOOTING.md) · Webhook 接入与演进建议：[WEBHOOK.md](docs/WEBHOOK.md) · 产品改进路线图：[ROADMAP.md](docs/ROADMAP.md) · **v2.1 升级说明：[V21_RELEASE.md](docs/V21_RELEASE.md)** · v2.0 升级说明：[V20_RELEASE.md](docs/V20_RELEASE.md)
+
+---
+
+## v2.1.0 升级摘要
+
+v2.1 补齐路线图剩余项：代码高亮、品牌化登录页、消息导出、双语界面、统计看板、内嵌 API 文档与多租户准备。单文件部署方式不变，旧接口保持兼容。
+
+| 分类 | 新增能力 |
+| --- | --- |
+| 体验 | U4 代码高亮 / 行号 / 长代码折叠 / 密钥脱敏复制；E7 品牌化登录页（错误提示在输入框下方、公开模式提示、首页与文档入口） |
+| 数据 | L1 消息导出（JSON / CSV / Markdown，CSV 带 BOM 与公式注入防护）；L4 统计看板（近 14 天趋势、来源分布、渠道成功率） |
+| 国际化 | L3 中英文界面切换，偏好持久化，覆盖导航、区块、按钮、提示与登录页 |
+| 开放 API | L5 服务端内嵌 `/docs` 文档页与 `/openapi.json`（OpenAPI 3.0） |
+| 多租户 | L6 租户注册表、KV 前缀隔离、租户级密钥替换、每日配额、停用/注销；默认租户行为与旧版完全一致 |
+| 验证 | 16 套测试脚本全部通过，其中 v2.1 专项 51 项后端 + 28 项界面交互 |
+
+完整变更见 [docs/V21_RELEASE.md](docs/V21_RELEASE.md)。升级后 `/api/status` 的 `version` 返回 `2.1.0`。
 
 ---
 
@@ -234,7 +251,7 @@ GET https://你的域名/send?token=<密钥>&title={title}&content={time}&source
 | `{weekday}` | 中文星期 | `星期四` |
 | `{uuid}` | 随机 UUID | `9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d` |
 | `{random}` | 8 位随机串 | `a3f9k2lm` |
-| `{version}` | 服务版本号 | `2.0.0` |
+| `{version}` | 服务版本号 | `2.1.0` |
 | `{source}` | 当前消息来源字段 | `ci` |
 
 **自定义变量**（调用方传值，替换同名占位符；**优先于内置变量**）
